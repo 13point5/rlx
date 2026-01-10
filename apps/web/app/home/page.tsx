@@ -1,5 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { SecretFetcher } from "@/components/secret-fetcher";
 
 export default async function HomePage() {
   const user = await currentUser();
@@ -9,7 +10,7 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-background p-4">
+    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-background p-4 gap-8">
       <div className="max-w-md text-center space-y-4">
         <h1 className="text-3xl font-bold tracking-tight">
           Welcome back{user.firstName ? `, ${user.firstName}` : ""}!
@@ -18,6 +19,8 @@ export default async function HomePage() {
           You&apos;re signed in as {user.emailAddresses[0]?.emailAddress}
         </p>
       </div>
+
+      <SecretFetcher />
     </div>
   );
 }
