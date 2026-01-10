@@ -1,11 +1,20 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, GitBranch, ExternalLink } from "lucide-react";
+import { Plus, GitBranch } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { GitHubIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // TODO: Replace with actual API call
 const mockProjects = [
@@ -60,7 +69,7 @@ export default async function ProjectPage({ params }: Props) {
               className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight hover:underline"
             >
               {project.name}
-              <ExternalLink className="size-4 text-muted-foreground" />
+              <GitHubIcon className="size-5 text-muted-foreground" />
             </a>
           </div>
           <Button asChild>
@@ -81,34 +90,40 @@ export default async function ProjectPage({ params }: Props) {
 
           <TabsContent value="runs" className="space-y-4">
             <div className="rounded-lg border">
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 border-b px-4 py-3 text-sm font-medium text-muted-foreground">
-                <div>Run</div>
-                <div>Branch</div>
-                <div>GPU</div>
-                <div>Status</div>
-                <div>Created</div>
-              </div>
-              {mockRuns.map((run) => (
-                <Link
-                  key={run.id}
-                  href={`/projects/${id}/runs/${run.id}`}
-                  className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 border-b px-4 py-3 text-sm hover:bg-muted/50 last:border-0"
-                >
-                  <div>
-                    <div className="font-medium">{run.name}</div>
-                    <div className="text-muted-foreground text-xs">{run.config}</div>
-                  </div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <GitBranch className="size-3" />
-                    <span className="max-w-[120px] truncate">{run.branch}</span>
-                  </div>
-                  <div className="text-muted-foreground">{run.gpu}</div>
-                  <div>
-                    <StatusBadge status={run.status} />
-                  </div>
-                  <div className="text-muted-foreground">{run.createdAt}</div>
-                </Link>
-              ))}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead>GPU</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {mockRuns.map((run) => (
+                    <TableRow key={run.id} className="cursor-pointer">
+                      <TableCell>
+                        <Link href={`/projects/${id}/runs/${run.id}`}>
+                          <div className="font-medium hover:underline">{run.name}</div>
+                          <div className="text-muted-foreground text-xs">{run.config}</div>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <GitBranch className="size-3" />
+                          <span className="max-w-[120px] truncate">{run.branch}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{run.gpu}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={run.status} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{run.createdAt}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </TabsContent>
 
@@ -145,10 +160,10 @@ export default async function ProjectPage({ params }: Props) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
-    running: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-    completed: "bg-green-500/10 text-green-600 border-green-500/20",
-    failed: "bg-red-500/10 text-red-600 border-red-500/20",
-    pending: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+    running: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    completed: "bg-green-500/10 text-green-500 border-green-500/20",
+    failed: "bg-red-500/10 text-red-500 border-red-500/20",
+    pending: "bg-gray-500/10 text-gray-500 border-gray-500/20",
   };
 
   return (
@@ -159,3 +174,4 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
