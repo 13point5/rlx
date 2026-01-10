@@ -1,9 +1,9 @@
+import Image from "next/image";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { GitHubIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,22 +22,26 @@ const mockProjects = [
   {
     id: "1",
     name: "openrlhf-experiments",
-    repoFullName: "13point5/openrlhf-experiments",
+    owner: "13point5",
+    ownerType: "user" as const,
   },
   {
     id: "2",
     name: "ppo-training",
-    repoFullName: "13point5/ppo-training",
+    owner: "13point5",
+    ownerType: "user" as const,
   },
   {
     id: "3",
-    name: "reward-model-finetune",
-    repoFullName: "13point5/reward-model-finetune",
+    name: "trl",
+    owner: "huggingface",
+    ownerType: "org" as const,
   },
   {
     id: "4",
     name: "grpo-experiments",
-    repoFullName: "13point5/grpo-experiments",
+    owner: "huggingface",
+    ownerType: "org" as const,
   },
 ];
 
@@ -85,6 +89,7 @@ export default async function ProjectPage({ params }: Props) {
 
   // TODO: Fetch actual project
   const project = mockProjects.find((p) => p.id === id) ?? mockProjects[0];
+  const repoFullName = `${project.owner}/${project.name}`;
 
   const breadcrumbs = [
     {
@@ -101,20 +106,28 @@ export default async function ProjectPage({ params }: Props) {
     <AppShell breadcrumbs={breadcrumbs}>
       <div className="space-y-6">
         {/* Project Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">
-              {project.name}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <a
+            href={`https://github.com/${repoFullName}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 hover:opacity-80"
+          >
+            <Image
+              src={`https://github.com/${project.owner}.png`}
+              alt={project.owner}
+              width={24}
+              height={24}
+              className={
+                project.ownerType === "user" ? "rounded-full" : "rounded-sm"
+              }
+            />
+            <h1 className="text-xl tracking-tight">
+              <span className="text-muted-foreground">{project.owner}</span>
+              <span className="text-muted-foreground/50 mx-1">/</span>
+              <span className="font-bold">{project.name}</span>
             </h1>
-            <a
-              href={`https://github.com/${project.repoFullName}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <GitHubIcon className="size-5" />
-            </a>
-          </div>
+          </a>
           <Button asChild>
             <Link href={`/projects/${id}/new-run`}>
               <Plus className="size-4" />

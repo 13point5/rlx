@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { ChevronDown, LogOut, Settings, Zap } from "lucide-react";
+import { ChevronsUpDown, LogOut, Settings, Zap } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -19,7 +20,17 @@ import { Separator } from "@/components/ui/separator";
 interface BreadcrumbItem {
   label: string;
   href?: string;
-  items?: { label: string; href: string; active?: boolean }[];
+  icon?: {
+    src: string;
+    alt: string;
+    rounded?: "full" | "sm";
+  };
+  items?: {
+    label: string;
+    href: string;
+    active?: boolean;
+    icon?: { src: string; alt: string; rounded?: "full" | "sm" };
+  }[];
 }
 
 interface AppHeaderProps {
@@ -36,41 +47,69 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
-      <div className="flex h-14 items-center gap-4 px-4">
+      <div className="flex h-14 items-center px-4">
         {/* Logo */}
         <Link href="/home" className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Zap className="size-4" />
-          </div>
+          <Zap className="size-5 fill-current" />
           <span className="font-semibold hidden sm:inline">RLX</span>
         </Link>
 
         {/* Breadcrumbs */}
         {breadcrumbs.length > 0 && (
-          <nav className="flex items-center gap-1 text-sm">
+          <nav className="flex items-center text-sm">
             {breadcrumbs.map((crumb, index) => (
-              <div key={index} className="flex items-center gap-1">
-                <span className="text-muted-foreground">/</span>
+              <div key={index} className="flex items-center">
+                <span className="mx-3 text-muted-foreground/50">/</span>
                 {crumb.items ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
-                        {crumb.label}
-                        <ChevronDown className="size-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {crumb.items.map((item) => (
-                        <DropdownMenuItem key={item.href} asChild>
-                          <Link href={item.href} className={item.active ? "font-medium" : ""}>
-                            {item.label}
-                          </Link>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex items-center gap-1">
+                    {crumb.icon && (
+                      <Image
+                        src={crumb.icon.src}
+                        alt={crumb.icon.alt}
+                        width={16}
+                        height={16}
+                        className={crumb.icon.rounded === "full" ? "rounded-full" : "rounded-sm"}
+                      />
+                    )}
+                    <span className="font-medium">{crumb.label}</span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                        >
+                          <ChevronsUpDown className="size-3 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {crumb.items.map((item) => (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link
+                              href={item.href}
+                              className={`flex items-center gap-2 ${item.active ? "font-medium" : ""}`}
+                            >
+                              {item.icon && (
+                                <Image
+                                  src={item.icon.src}
+                                  alt={item.icon.alt}
+                                  width={16}
+                                  height={16}
+                                  className={item.icon.rounded === "full" ? "rounded-full" : "rounded-sm"}
+                                />
+                              )}
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 ) : crumb.href ? (
-                  <Link href={crumb.href} className="px-2 py-1 hover:text-foreground text-muted-foreground">
+                  <Link
+                    href={crumb.href}
+                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                  >
                     {crumb.label}
                   </Link>
                 ) : (
