@@ -1,47 +1,39 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, GitBranch } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
+import { ProjectCard } from "@/components/project-card";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 
 // TODO: Replace with actual API call
+// A project = GitHub repo
 const mockProjects = [
   {
     id: "1",
     name: "openrlhf-experiments",
-    emoji: "🧪",
-    repoFullName: "user/openrlhf-experiments",
-    defaultBranch: "main",
-    lastRunAt: "2 hours ago",
-    lastRunStatus: "completed" as const,
+    repoFullName: "13point5/openrlhf-experiments",
+    activeRuns: 2,
   },
   {
     id: "2",
     name: "ppo-training",
-    emoji: "🚀",
-    repoFullName: "user/ppo-training",
-    defaultBranch: "develop",
-    lastRunAt: "1 day ago",
-    lastRunStatus: "running" as const,
+    repoFullName: "13point5/ppo-training",
+    activeRuns: 0,
   },
   {
     id: "3",
     name: "reward-model-finetune",
-    emoji: "🎯",
-    repoFullName: "user/reward-model-finetune",
-    defaultBranch: "main",
-    lastRunAt: "3 days ago",
-    lastRunStatus: "failed" as const,
+    repoFullName: "13point5/reward-model-finetune",
+    activeRuns: 1,
+  },
+  {
+    id: "4",
+    name: "grpo-experiments",
+    repoFullName: "13point5/grpo-experiments",
+    activeRuns: 0,
   },
 ];
 
@@ -59,71 +51,26 @@ export default async function HomePage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-            <p className="text-muted-foreground">
-              Manage your RL training projects and runs.
-            </p>
+        {/* Search and New Project */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Search Projects..." className="pl-9" />
           </div>
           <Button asChild>
             <Link href="/projects/new">
               <Plus className="size-4" />
-              New Project
+              Add New
             </Link>
           </Button>
         </div>
 
-        {/* Projects Table */}
+        {/* Projects Grid */}
         {hasProjects ? (
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Last Run</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projects.map((project) => (
-                  <TableRow key={project.id} className="cursor-pointer">
-                    <TableCell>
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="flex items-center gap-3"
-                      >
-                        <span className="text-xl">{project.emoji}</span>
-                        <div>
-                          <div className="font-medium hover:underline">
-                            {project.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {project.repoFullName}
-                          </div>
-                        </div>
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <GitBranch className="size-4" />
-                        {project.defaultBranch}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {project.lastRunAt ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      {project.lastRunStatus && (
-                        <StatusBadge status={project.lastRunStatus} />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map((project) => (
+              <ProjectCard key={project.id} project={project} />
+            ))}
           </div>
         ) : (
           <EmptyState
@@ -135,22 +82,5 @@ export default async function HomePage() {
         )}
       </div>
     </AppShell>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const colors = {
-    running: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    completed: "bg-green-500/10 text-green-500 border-green-500/20",
-    failed: "bg-red-500/10 text-red-500 border-red-500/20",
-    pending: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${colors[status as keyof typeof colors] ?? colors.pending}`}
-    >
-      {status}
-    </span>
   );
 }

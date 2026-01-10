@@ -17,17 +17,58 @@ import {
 } from "@/components/ui/table";
 
 // TODO: Replace with actual API call
+// A project = GitHub repo
 const mockProjects = [
-  { id: "1", name: "openrlhf-experiments", repoFullName: "user/openrlhf-experiments" },
-  { id: "2", name: "ppo-training", repoFullName: "user/ppo-training" },
-  { id: "3", name: "reward-model-finetune", repoFullName: "user/reward-model-finetune" },
+  {
+    id: "1",
+    name: "openrlhf-experiments",
+    repoFullName: "13point5/openrlhf-experiments",
+  },
+  {
+    id: "2",
+    name: "ppo-training",
+    repoFullName: "13point5/ppo-training",
+  },
+  {
+    id: "3",
+    name: "reward-model-finetune",
+    repoFullName: "13point5/reward-model-finetune",
+  },
+  {
+    id: "4",
+    name: "grpo-experiments",
+    repoFullName: "13point5/grpo-experiments",
+  },
 ];
 
 const mockRuns = [
-  { id: "run-1", name: "Training Run #1", branch: "main", config: "configs/ppo.yaml", status: "completed", createdAt: "2 hours ago", gpu: "H100" },
-  { id: "run-2", name: "Training Run #2", branch: "feature/dpo", config: "configs/dpo.yaml", status: "running", createdAt: "30 min ago", gpu: "A100" },
-  { id: "run-3", name: "Training Run #3", branch: "main", config: "configs/ppo.yaml", status: "failed", createdAt: "1 day ago", gpu: "H100" },
-  { id: "run-4", name: "Training Run #4", branch: "experiment/grpo", config: "configs/grpo.yaml", status: "completed", createdAt: "3 days ago", gpu: "H100" },
+  {
+    id: "run-1",
+    name: "Training Run #1",
+    branch: "main",
+    config: "configs/ppo.yaml",
+    status: "completed",
+    createdAt: "2 hours ago",
+    gpu: "H100",
+  },
+  {
+    id: "run-2",
+    name: "Training Run #2",
+    branch: "feature/dpo",
+    config: "configs/dpo.yaml",
+    status: "running",
+    createdAt: "30 min ago",
+    gpu: "A100",
+  },
+  {
+    id: "run-3",
+    name: "Training Run #3",
+    branch: "main",
+    config: "configs/ppo.yaml",
+    status: "failed",
+    createdAt: "1 day ago",
+    gpu: "H100",
+  },
 ];
 
 interface Props {
@@ -61,15 +102,17 @@ export default async function ProjectPage({ params }: Props) {
       <div className="space-y-6">
         {/* Project Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {project.name}
+            </h1>
             <a
               href={`https://github.com/${project.repoFullName}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight hover:underline"
+              className="text-muted-foreground hover:text-foreground"
             >
-              {project.name}
-              <GitHubIcon className="size-5 text-muted-foreground" />
+              <GitHubIcon className="size-5" />
             </a>
           </div>
           <Button asChild>
@@ -105,21 +148,31 @@ export default async function ProjectPage({ params }: Props) {
                     <TableRow key={run.id} className="cursor-pointer">
                       <TableCell>
                         <Link href={`/projects/${id}/runs/${run.id}`}>
-                          <div className="font-medium hover:underline">{run.name}</div>
-                          <div className="text-muted-foreground text-xs">{run.config}</div>
+                          <div className="font-medium hover:underline">
+                            {run.name}
+                          </div>
+                          <div className="text-muted-foreground text-xs">
+                            {run.config}
+                          </div>
                         </Link>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <GitBranch className="size-3" />
-                          <span className="max-w-[120px] truncate">{run.branch}</span>
+                          <span className="max-w-[120px] truncate">
+                            {run.branch}
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{run.gpu}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {run.gpu}
+                      </TableCell>
                       <TableCell>
                         <StatusBadge status={run.status} />
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{run.createdAt}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {run.createdAt}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -168,10 +221,11 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${colors[status as keyof typeof colors] ?? colors.pending}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${
+        colors[status as keyof typeof colors] ?? colors.pending
+      }`}
     >
       {status}
     </span>
   );
 }
-
