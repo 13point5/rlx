@@ -1,65 +1,135 @@
-import Image from "next/image";
+import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { Button } from "@/components/ui/button";
+import { Zap, GitBranch, Cpu, BarChart3 } from "lucide-react";
 
-export default function Home() {
+export default async function LandingPage() {
+  const { userId } = await auth();
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex min-h-screen flex-col">
+      {/* Header */}
+      <header className="border-b">
+        <div className="container mx-auto flex h-14 items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Zap className="size-4" />
+            </div>
+            <span className="font-semibold">RLX</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            {userId ? (
+              <Button asChild>
+                <Link href="/home">Go to Dashboard</Link>
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" asChild>
+                  <Link href="/sign-in">Sign In</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/sign-up">Get Started</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </header>
+
+      {/* Hero Section */}
+      <main className="flex-1">
+        <section className="container mx-auto flex flex-col items-center justify-center gap-8 px-4 py-24 text-center md:py-32">
+          <div className="flex max-w-3xl flex-col items-center gap-6">
+            <div className="rounded-full border bg-muted px-4 py-1.5 text-sm text-muted-foreground">
+              Reinforcement Learning Made Simple
+            </div>
+            <h1 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+              Train RL Models with
+              <span className="text-primary"> One Click</span>
+            </h1>
+            <p className="max-w-xl text-lg text-muted-foreground md:text-xl">
+              Connect your GitHub repo, select a config, pick a GPU, and start training.
+              No infrastructure headaches. Just results.
+            </p>
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <Button size="lg" asChild>
+                <Link href={userId ? "/home" : "/sign-up"}>
+                  Get Started Free
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
+                <Link href="https://github.com" target="_blank" rel="noopener noreferrer">
+                  View on GitHub
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* Features Section */}
+        <section className="border-t bg-muted/50">
+          <div className="container mx-auto px-4 py-16 md:py-24">
+            <div className="mb-12 text-center">
+              <h2 className="text-3xl font-bold tracking-tight">
+                Everything you need for RL training
+              </h2>
+              <p className="mt-4 text-muted-foreground">
+                From code to trained model in minutes, not hours.
+              </p>
+            </div>
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+              <FeatureCard
+                icon={GitBranch}
+                title="GitHub Integration"
+                description="Connect your repos and select any branch or config file directly."
+              />
+              <FeatureCard
+                icon={Cpu}
+                title="GPU Selection"
+                description="Choose from H100s, A100s, and more. Spot or secure pricing."
+              />
+              <FeatureCard
+                icon={BarChart3}
+                title="Live Monitoring"
+                description="Watch your training runs in real-time with detailed metrics."
+              />
+              <FeatureCard
+                icon={Zap}
+                title="Fast Spin-up"
+                description="Get from zero to training in under 2 minutes."
+              />
+            </div>
+          </div>
+        </section>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t">
+        <div className="container mx-auto flex h-14 items-center justify-between px-4 text-sm text-muted-foreground">
+          <p>Built for the RL community</p>
+          <p>Powered by Prime Intellect</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border bg-background p-6">
+      <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="size-5 text-primary" />
+      </div>
+      <h3 className="font-semibold">{title}</h3>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
