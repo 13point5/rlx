@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -49,6 +49,32 @@ class GitHubConnection(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True)
+    clerk_user_id = Column(String, nullable=False, index=True)
+    repo_id = Column(Integer, nullable=False)  # GitHub repo ID (permanent unique identifier)
+    repo_name = Column(String, nullable=False)  # repo name
+    repo_owner = Column(String, nullable=False)  # repo owner
+    repo_owner_type = Column(String, nullable=False)  # "user" or "org"
+    repo_url = Column(String, nullable=False)  # Full GitHub URL
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Unique constraint: one project per user per repo
+    __table_args__ = (UniqueConstraint("clerk_user_id", "repo_id", name="unique_user_repo"),)
+
+    # Property to derive full_name when needed (not stored in DB)
+    @property
+    def repo_full_name(self) -> str:
+        return f"{self.repo_owner}/{self.repo_name}"
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
