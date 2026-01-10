@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Clerk CSS layer for Tailwind 4 compatibility */
+@layer clerk;
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
