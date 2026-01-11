@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Link as LinkIcon, Loader2, AlertCircle } from "lucide-react";
+import { useDebouncedCallback } from "use-debounce";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,35 +15,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { GitHubAvatar } from "@/components/github-avatar";
 
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
 export default function NewProjectPage() {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingUrl, setIsCreatingUrl] = useState(false);
+  const [creatingRepoId, setCreatingRepoId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isCreating = isCreatingUrl || creatingRepoId !== null;
 
   // Repos state
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
-  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [reposError, setReposError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -51,13 +37,6 @@ export default function NewProjectPage() {
   // Fetch repos
   const fetchRepos = useCallback(
     async (searchTerm: string, pageNum: number, append: boolean = false) => {
-      if (append) {
-        setIsLoadingMore(true);
-      } else {
-        setIsLoadingRepos(true);
-        setReposError(null);
-      }
-
       const result = await getGitHubRepos({
         page: pageNum,
         per_page: 25,
@@ -85,41 +64,60 @@ export default function NewProjectPage() {
     []
   );
 
-  // Fetch repos on mount
-  useEffect(() => {
-    fetchRepos("", 1);
-  }, [fetchRepos]);
+  const debouncedFetchRepos = useDebouncedCallback(
+    (searchTerm: string, pageNum: number) => {
+      setIsLoadingRepos(true);
+      setReposError(null);
+      fetchRepos(searchTerm, pageNum);
+    },
+    300
+  );
 
-  // Fetch repos when debounced search query changes
   useEffect(() => {
-    fetchRepos(debouncedSearchQuery, 1);
-  }, [debouncedSearchQuery, fetchRepos]);
+    debouncedFetchRepos(searchQuery, 1);
+  }, [searchQuery, debouncedFetchRepos]);
 
   const handleLoadMore = () => {
-    fetchRepos(debouncedSearchQuery, page + 1, true);
+    setReposError(null);
+    setIsLoadingMore(true);
+    fetchRepos(searchQuery, page + 1, true);
   };
 
-  const handleImport = async (repoUrl: string) => {
-    setIsCreating(true);
+  const handleImport = async ({
+    repoUrl,
+    repoId,
+  }: {
+    repoUrl: string;
+    repoId?: number;
+  }) => {
     setError(null);
+
+    if (repoId) {
+      setCreatingRepoId(repoId);
+    } else {
+      setIsCreatingUrl(true);
+    }
 
     const result = await createProject(repoUrl);
 
     if (!result.success) {
       setError(result.error ?? "Failed to create project");
-      setIsCreating(false);
+      setIsCreatingUrl(false);
+      setCreatingRepoId(null);
       return;
     }
 
+    setIsCreatingUrl(false);
+    setCreatingRepoId(null);
     router.push(`/projects/${result.project!.id}`);
   };
 
   const handleUrlSubmit = async () => {
-    await handleImport(repoUrl);
+    await handleImport({ repoUrl });
   };
 
   const handleRepoImport = async (repo: GitHubRepo) => {
-    await handleImport(repo.html_url);
+    await handleImport({ repoUrl: repo.html_url, repoId: repo.id });
   };
 
   return (
@@ -155,7 +153,7 @@ export default function NewProjectPage() {
               disabled={!repoUrl || isCreating}
               onClick={handleUrlSubmit}
             >
-              {isCreating ? (
+              {isCreatingUrl ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   Creating...
@@ -177,7 +175,11 @@ export default function NewProjectPage() {
             <Input
               placeholder="Search repositories..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setReposError(null);
+                setIsLoadingRepos(true);
+              }}
               className="pl-9"
             />
           </div>
@@ -232,7 +234,7 @@ export default function NewProjectPage() {
                         onClick={() => handleRepoImport(repo)}
                         disabled={isCreating}
                       >
-                        {isCreating ? (
+                        {creatingRepoId === repo.id ? (
                           <Loader2 className="size-4 animate-spin" />
                         ) : (
                           "Import"

@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getProject, getProjects } from "@/app/actions/api";
+import { SettingsTab } from "./tabs/settings";
 
 // TODO: Replace with actual API call when runs API is implemented
 const mockRuns = [
@@ -114,11 +115,15 @@ export default async function ProjectPage({ params }: Props) {
               width={24}
               height={24}
               className={
-                project.repo_owner_type === "user" ? "rounded-full" : "rounded-sm"
+                project.repo_owner_type === "user"
+                  ? "rounded-full"
+                  : "rounded-sm"
               }
             />
             <h1 className="text-xl tracking-tight">
-              <span className="text-muted-foreground">{project.repo_owner}</span>
+              <span className="text-muted-foreground">
+                {project.repo_owner}
+              </span>
               <span className="text-muted-foreground/50 mx-1">/</span>
               <span className="font-bold">{project.repo_name}</span>
             </h1>
@@ -202,16 +207,10 @@ export default async function ProjectPage({ params }: Props) {
           </TabsContent>
 
           <TabsContent value="settings">
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Project settings will appear here.
-                </p>
-              </CardContent>
-            </Card>
+            <SettingsTab
+              projectId={project.id}
+              projectName={project.repo_name}
+            />
           </TabsContent>
         </Tabs>
       </div>

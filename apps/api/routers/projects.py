@@ -246,3 +246,25 @@ async def get_project(project_id: int, user: CurrentUser, db: DbSession):
         )
 
     return project_to_response(project)
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: int, user: CurrentUser, db: DbSession):
+    """Delete a project by ID."""
+    clerk_user_id = user.get("sub")
+
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.clerk_user_id == clerk_user_id)
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found.",
+        )
+
+    await db.delete(project)
+    await db.commit()
+
+    return None
