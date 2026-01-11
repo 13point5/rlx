@@ -4,42 +4,11 @@ import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/error-state";
 import { ProjectCard } from "@/components/project-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-// TODO: Replace with actual API call
-// A project = GitHub repo
-const mockProjects = [
-  {
-    id: "1",
-    name: "openrlhf-experiments",
-    owner: "13point5",
-    ownerType: "user" as const,
-    activeRuns: 2,
-  },
-  {
-    id: "2",
-    name: "ppo-training",
-    owner: "13point5",
-    ownerType: "user" as const,
-    activeRuns: 0,
-  },
-  {
-    id: "3",
-    name: "trl",
-    owner: "huggingface",
-    ownerType: "org" as const,
-    activeRuns: 1,
-  },
-  {
-    id: "4",
-    name: "grpo-experiments",
-    owner: "huggingface",
-    ownerType: "org" as const,
-    activeRuns: 0,
-  },
-];
+import { getProjects } from "@/app/actions/api";
 
 export default async function HomePage() {
   const user = await currentUser();
@@ -48,13 +17,25 @@ export default async function HomePage() {
     redirect("/sign-in");
   }
 
-  // TODO: Fetch actual projects from API
-  const projects = mockProjects;
+  const result = await getProjects();
+
+  if (!result.success) {
+    return (
+      <AppShell>
+        <ErrorState title="Failed to load projects" message={result.error} />
+      </AppShell>
+    );
+  }
+
+  const projects = result.projects ?? [];
   const hasProjects = projects.length > 0;
 
   return (
     <AppShell>
       <div className="space-y-6">
+        {/* Header */}
+        <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+
         {/* Search and New Project */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1">

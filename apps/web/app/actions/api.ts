@@ -166,9 +166,15 @@ export async function getGitHubStatus(): Promise<{
   }
 }
 
-export async function getGitHubRepos(): Promise<{
+export type GitHubOwner = {
+  login: string;
+  avatar_url: string;
+  type: "User" | "Organization";
+};
+
+export async function getGitHubOwners(): Promise<{
   success: boolean;
-  repos?: GitHubRepo[];
+  owners?: GitHubOwner[];
   error?: string;
 }> {
   const { getToken, userId } = await auth();
@@ -184,13 +190,86 @@ export async function getGitHubRepos(): Promise<{
       return { success: false, error: "Could not get session token" };
     }
 
-    const response = await axios.get(`${API_BASE_URL}/api/github/repos`, {
+    const response = await axios.get(`${API_BASE_URL}/api/github/owners`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
-    return { success: true, repos: response.data.repos };
+    return { success: true, owners: response.data.owners };
+  } catch (error) {
+    console.error("Error getting GitHub owners:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export type GitHubReposResponse = {
+  repos: GitHubRepo[];
+  page: number;
+  per_page: number;
+  has_more: boolean;
+  username: string | null;
+};
+
+export async function getGitHubRepos(options?: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  owner?: string;
+}): Promise<{
+  success: boolean;
+  data?: GitHubReposResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const params = new URLSearchParams();
+    if (options?.page) params.set("page", options.page.toString());
+    if (options?.per_page) params.set("per_page", options.per_page.toString());
+    if (options?.search) params.set("search", options.search);
+    if (options?.owner) params.set("owner", options.owner);
+
+    const url = `${API_BASE_URL}/api/github/repos${params.toString() ? `?${params.toString()}` : ""}`;
+
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        repos: response.data.repos,
+        page: response.data.page,
+        per_page: response.data.per_page,
+        has_more: response.data.has_more,
+        username: response.data.username,
+      },
+    };
   } catch (error) {
     console.error("Error getting GitHub repos:", error);
 
@@ -239,6 +318,156 @@ export async function disconnectGitHub(): Promise<{
     return { success: true };
   } catch (error) {
     console.error("Error disconnecting GitHub:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// =============================================================================
+// Project Actions
+// =============================================================================
+
+export type Project = {
+  id: number;
+  repo_id: number;
+  repo_name: string;
+  repo_owner: string;
+  repo_owner_type: "user" | "organization";
+  repo_url: string;
+  repo_full_name: string;
+  active_runs: number;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export async function getProjects(): Promise<{
+  success: boolean;
+  projects?: Project[];
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/projects`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, projects: response.data.projects };
+  } catch (error) {
+    console.error("Error getting projects:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getProject(id: number): Promise<{
+  success: boolean;
+  project?: Project;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/projects/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, project: response.data };
+  } catch (error) {
+    console.error("Error getting project:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function createProject(repoUrl: string): Promise<{
+  success: boolean;
+  project?: Project;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/projects`,
+      { repo_url: repoUrl },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return { success: true, project: response.data };
+  } catch (error) {
+    console.error("Error creating project:", error);
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;

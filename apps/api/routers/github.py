@@ -126,9 +126,12 @@ async def status(user: CurrentUser, db: DbSession):
     return {"connected": True, "username": connection.github_username}
 
 
-@router.get("/repos")
-async def repos(user: CurrentUser, db: DbSession):
-    """Fetch the user's top 5 most recently updated repositories."""
+@router.get("/owners")
+async def owners(user: CurrentUser, db: DbSession):
+    """
+    Fetch the authenticated user and their organizations.
+    Returns a list of owners (user first, then orgs) that can be used in the owner dropdown.
+    """
     clerk_user_id = user.get("sub")
 
     result = await db.execute(
@@ -146,9 +149,89 @@ async def repos(user: CurrentUser, db: DbSession):
         raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
 
     try:
-        repos_list = await github_service.fetch_user_repos(access_token)
+        # Fetch user info
+        github_user = await github_service.fetch_github_user(access_token)
+        if github_user is None:
+            # Token invalid, try refresh
+            new_token = await github_service.refresh_token(connection, db)
+            if not new_token:
+                await db.delete(connection)
+                await db.commit()
+                raise HTTPException(
+                    status_code=401, detail="GitHub token expired. Please reconnect."
+                )
+            github_user = await github_service.fetch_github_user(new_token)
+            if github_user is None:
+                raise HTTPException(status_code=500, detail="Failed to fetch user info")
+            access_token = new_token
 
-        if repos_list is None:
+        # Fetch orgs
+        orgs = await github_service.fetch_user_orgs(access_token)
+        if orgs is None:
+            orgs = []
+
+        # Return user first, then orgs
+        owners_list = [asdict(github_user)] + [asdict(org) for org in orgs]
+
+        return {"owners": owners_list}
+
+    except Exception as e:
+        if str(e) == "rate_limit":
+            raise HTTPException(
+                status_code=429, detail="GitHub API rate limit exceeded. Please try again later."
+            )
+        print(f"Error fetching owners: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch owners")
+
+
+@router.get("/repos")
+async def repos(
+    user: CurrentUser,
+    db: DbSession,
+    page: int = 1,
+    per_page: int = 25,
+    search: str | None = None,
+    owner: str | None = None,
+):
+    """
+    Fetch repositories with pagination and optional search.
+
+    Query params:
+    - page: Page number (default: 1)
+    - per_page: Items per page (default: 25, max: 100)
+    - search: Optional search query to filter by repo name
+    - owner: Optional owner (user or org) to filter repos. If not provided, fetches authenticated user's repos.
+    """
+    clerk_user_id = user.get("sub")
+
+    # Validate pagination params
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 25
+    if per_page > 100:
+        per_page = 100
+
+    result = await db.execute(
+        select(GitHubConnection).where(GitHubConnection.clerk_user_id == clerk_user_id)
+    )
+    connection = result.scalar_one_or_none()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="GitHub not connected")
+
+    access_token = await github_service.get_valid_token(connection, db)
+    if not access_token:
+        await db.delete(connection)
+        await db.commit()
+        raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
+
+    try:
+        repos_response = await github_service.fetch_user_repos(
+            access_token, page=page, per_page=per_page, search=search, owner=owner
+        )
+
+        if repos_response is None:
             # Token invalid, try refresh
             new_token = await github_service.refresh_token(connection, db)
             if not new_token:
@@ -158,11 +241,19 @@ async def repos(user: CurrentUser, db: DbSession):
                     status_code=401, detail="GitHub token expired. Please reconnect."
                 )
 
-            repos_list = await github_service.fetch_user_repos(new_token)
-            if repos_list is None:
+            repos_response = await github_service.fetch_user_repos(
+                new_token, page=page, per_page=per_page, search=search, owner=owner
+            )
+            if repos_response is None:
                 raise HTTPException(status_code=500, detail="Failed to fetch repositories")
 
-        return {"repos": [asdict(repo) for repo in repos_list]}
+        return {
+            "repos": [asdict(repo) for repo in repos_response.repos],
+            "page": repos_response.page,
+            "per_page": repos_response.per_page,
+            "has_more": repos_response.has_more,
+            "username": repos_response.username,
+        }
 
     except Exception as e:
         if str(e) == "rate_limit":

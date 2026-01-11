@@ -1,9 +1,10 @@
 import Image from "next/image";
 import { currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,36 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getProject, getProjects } from "@/app/actions/api";
 
-// TODO: Replace with actual API call
-// A project = GitHub repo
-const mockProjects = [
-  {
-    id: "1",
-    name: "openrlhf-experiments",
-    owner: "13point5",
-    ownerType: "user" as const,
-  },
-  {
-    id: "2",
-    name: "ppo-training",
-    owner: "13point5",
-    ownerType: "user" as const,
-  },
-  {
-    id: "3",
-    name: "trl",
-    owner: "huggingface",
-    ownerType: "org" as const,
-  },
-  {
-    id: "4",
-    name: "grpo-experiments",
-    owner: "huggingface",
-    ownerType: "org" as const,
-  },
-];
-
+// TODO: Replace with actual API call when runs API is implemented
 const mockRuns = [
   {
     id: "run-1",
@@ -87,17 +61,38 @@ export default async function ProjectPage({ params }: Props) {
     redirect("/sign-in");
   }
 
-  // TODO: Fetch actual project
-  const project = mockProjects.find((p) => p.id === id) ?? mockProjects[0];
-  const repoFullName = `${project.owner}/${project.name}`;
+  // Fetch project and all projects in parallel
+  const [projectResult, projectsResult] = await Promise.all([
+    getProject(Number(id)),
+    getProjects(),
+  ]);
+
+  // Handle project not found
+  if (!projectResult.success) {
+    if (projectResult.error?.toLowerCase().includes("not found")) {
+      notFound();
+    }
+    return (
+      <AppShell>
+        <ErrorState
+          title="Failed to load project"
+          message={projectResult.error}
+        />
+      </AppShell>
+    );
+  }
+
+  const project = projectResult.project!;
+  const allProjects = projectsResult.projects ?? [];
+  const repoFullName = `${project.repo_owner}/${project.repo_name}`;
 
   const breadcrumbs = [
     {
-      label: project.name,
-      items: mockProjects.map((p) => ({
-        label: p.name,
+      label: project.repo_name,
+      items: allProjects.map((p) => ({
+        label: p.repo_name,
         href: `/projects/${p.id}`,
-        active: p.id === id,
+        active: p.id === project.id,
       })),
     },
   ];
@@ -114,18 +109,18 @@ export default async function ProjectPage({ params }: Props) {
             className="flex items-center gap-2 hover:opacity-80"
           >
             <Image
-              src={`https://github.com/${project.owner}.png`}
-              alt={project.owner}
+              src={`https://github.com/${project.repo_owner}.png`}
+              alt={project.repo_owner}
               width={24}
               height={24}
               className={
-                project.ownerType === "user" ? "rounded-full" : "rounded-sm"
+                project.repo_owner_type === "user" ? "rounded-full" : "rounded-sm"
               }
             />
             <h1 className="text-xl tracking-tight">
-              <span className="text-muted-foreground">{project.owner}</span>
+              <span className="text-muted-foreground">{project.repo_owner}</span>
               <span className="text-muted-foreground/50 mx-1">/</span>
-              <span className="font-bold">{project.name}</span>
+              <span className="font-bold">{project.repo_name}</span>
             </h1>
           </a>
           <Button asChild>
