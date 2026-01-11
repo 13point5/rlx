@@ -1,0 +1,75 @@
+import Image from "next/image";
+import { cn } from "@/lib/utils";
+
+export type GitHubAvatarType = "User" | "Organization" | "user" | "org";
+
+interface GitHubAvatarProps {
+  username: string;
+  avatarUrl: string;
+  type: GitHubAvatarType;
+  size?: number;
+  className?: string;
+}
+
+/**
+ * Reusable GitHub avatar component that automatically handles shape:
+ * - Organizations: Square with rounded corners
+ * - Users: Circular
+ */
+export function GitHubAvatar({
+  username,
+  avatarUrl,
+  type,
+  size = 20,
+  className,
+}: GitHubAvatarProps) {
+  const isOrg =
+    type === "Organization" || type === "org";
+
+  return (
+    <Image
+      src={avatarUrl}
+      alt={username}
+      width={size}
+      height={size}
+      className={cn(
+        "shrink-0",
+        isOrg ? "rounded-md" : "rounded-full",
+        className
+      )}
+    />
+  );
+}
+
+interface GitHubOwnerWithLabelProps {
+  username: string;
+  avatarUrl: string;
+  type: GitHubAvatarType;
+  size?: number;
+  showOrgLabel?: boolean;
+  className?: string;
+}
+
+/**
+ * GitHub avatar with username text, optionally showing "(org)" label
+ */
+export function GitHubOwnerWithLabel({
+  username,
+  avatarUrl,
+  type,
+  size = 20,
+  showOrgLabel = true,
+  className,
+}: GitHubOwnerWithLabelProps) {
+  const isOrg = type === "Organization" || type === "org";
+
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <GitHubAvatar username={username} avatarUrl={avatarUrl} type={type} size={size} />
+      <span>{username}</span>
+      {isOrg && showOrgLabel && (
+        <span className="text-xs text-muted-foreground">(org)</span>
+      )}
+    </div>
+  );
+}

@@ -73,6 +73,9 @@ export type GitHubRepo = {
   language: string | null;
   stargazers_count: number;
   updated_at: string;
+  owner_username: string;
+  owner_type: "User" | "Organization";
+  owner_avatar_url: string;
 };
 
 export async function getGitHubAuthUrl(): Promise<{
@@ -167,7 +170,7 @@ export async function getGitHubStatus(): Promise<{
 }
 
 export type GitHubOwner = {
-  login: string;
+  username: string;
   avatar_url: string;
   type: "User" | "Organization";
 };

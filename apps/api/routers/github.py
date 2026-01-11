@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import GitHubConnection, get_db
+from database import GitHubConnection, Project, get_db
 from deps import CurrentUser, DbSession
 from services import github as github_service
 
@@ -30,7 +30,7 @@ async def authorize(user: CurrentUser):
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "redirect_uri": f"{BACKEND_URL}/api/github/callback",
-        "scope": "repo read:user",
+        "scope": "repo read:user read:org",
         "state": clerk_user_id,
     }
 
@@ -191,16 +191,14 @@ async def repos(
     page: int = 1,
     per_page: int = 25,
     search: str | None = None,
-    owner: str | None = None,
 ):
     """
-    Fetch repositories with pagination and optional search.
+    Fetch repositories the user has contributed to or owns.
 
     Query params:
     - page: Page number (default: 1)
     - per_page: Items per page (default: 25, max: 100)
     - search: Optional search query to filter by repo name
-    - owner: Optional owner (user or org) to filter repos. If not provided, fetches authenticated user's repos.
     """
     clerk_user_id = user.get("sub")
 
@@ -226,9 +224,15 @@ async def repos(
         await db.commit()
         raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
 
+    # Get already imported repo IDs for this user
+    existing_projects_result = await db.execute(
+        select(Project.repo_id).where(Project.clerk_user_id == clerk_user_id)
+    )
+    imported_repo_ids = set(existing_projects_result.scalars().all())
+
     try:
         repos_response = await github_service.fetch_user_repos(
-            access_token, page=page, per_page=per_page, search=search, owner=owner
+            access_token, page=page, per_page=per_page, search=search
         )
 
         if repos_response is None:
@@ -242,13 +246,19 @@ async def repos(
                 )
 
             repos_response = await github_service.fetch_user_repos(
-                new_token, page=page, per_page=per_page, search=search, owner=owner
+                new_token, page=page, per_page=per_page, search=search
             )
             if repos_response is None:
                 raise HTTPException(status_code=500, detail="Failed to fetch repositories")
 
+        # Filter out already imported repos
+        filtered_repos = [
+            repo for repo in repos_response.repos
+            if repo.id not in imported_repo_ids
+        ]
+
         return {
-            "repos": [asdict(repo) for repo in repos_response.repos],
+            "repos": [asdict(repo) for repo in filtered_repos],
             "page": repos_response.page,
             "per_page": repos_response.per_page,
             "has_more": repos_response.has_more,

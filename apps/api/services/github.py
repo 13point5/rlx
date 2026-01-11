@@ -54,12 +54,6 @@ class TokenData:
     expires_at: datetime | None
 
 
-@dataclass
-class GitHubUser:
-    id: str
-    username: str
-
-
 async def exchange_code_for_tokens(code: str) -> TokenData | None:
     """Exchange an OAuth code for access and refresh tokens."""
     async with httpx.AsyncClient() as client:
@@ -85,28 +79,6 @@ async def exchange_code_for_tokens(code: str) -> TokenData | None:
         access_token=data.get("access_token"),
         refresh_token=data.get("refresh_token"),
         expires_at=expires_at,
-    )
-
-
-async def fetch_github_user(access_token: str) -> GitHubUser | None:
-    """Fetch the authenticated user's info from GitHub."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/vnd.github+json",
-            },
-        )
-
-        if response.status_code != 200:
-            return None
-
-        data = response.json()
-
-    return GitHubUser(
-        id=str(data.get("id")),
-        username=data.get("login"),
     )
 
 
@@ -164,6 +136,9 @@ class RepoInfo:
     language: str | None
     stargazers_count: int
     updated_at: str
+    owner_username: str
+    owner_type: str  # "User" or "Organization"
+    owner_avatar_url: str
 
 
 @dataclass
@@ -178,7 +153,7 @@ class ReposResponse:
 
 @dataclass
 class GitHubOwner:
-    login: str
+    username: str
     avatar_url: str
     type: str  # "User" or "Organization"
 
@@ -212,75 +187,54 @@ async def fetch_github_user(access_token: str) -> GitHubOwner | None:
             return None
         data = response.json()
         return GitHubOwner(
-            login=data["login"],
+            username=data["login"],
             avatar_url=data["avatar_url"],
             type="User",
         )
 
 
 async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
-    """Fetch organizations the user belongs to."""
+    """
+    Fetch organizations the user has access to.
+    Includes:
+    1. Organizations the user is a member of
+    2. Organizations whose repos the user has access to or contributed to
+    """
     async with httpx.AsyncClient() as client:
-        response = await client.get(
+        # Fetch organizations the user is a member of
+        member_orgs_response = await client.get(
             "https://api.github.com/user/orgs",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/vnd.github+json",
             },
         )
-        if response.status_code == 401:
+        if member_orgs_response.status_code == 401:
             return None
-        if response.status_code != 200:
-            return []
 
-        orgs = response.json()
-        return [
-            GitHubOwner(
-                login=org["login"],
+        member_orgs = member_orgs_response.json() if member_orgs_response.status_code == 200 else []
+
+        # Extract unique organizations
+        org_map = {}
+
+        # Add member orgs first
+        for org in member_orgs:
+            org_map[org["login"].lower()] = GitHubOwner(
+                username=org["login"],
                 avatar_url=org["avatar_url"],
                 type="Organization",
             )
-            for org in orgs
-        ]
 
+        # Fetch repos the user has access to (with pagination to get more orgs)
+        page = 1
+        max_pages = 3  # Limit to 300 repos to avoid rate limits
 
-async def fetch_user_repos(
-    access_token: str,
-    page: int = 1,
-    per_page: int = 25,
-    search: str | None = None,
-    owner: str | None = None,
-) -> ReposResponse | None:
-    """
-    Fetch repositories with pagination and optional search.
-
-    Args:
-        access_token: GitHub OAuth token
-        page: Page number (1-indexed)
-        per_page: Number of repos per page (max 100)
-        search: Optional search query to filter repos by name
-        owner: Optional owner (user or org) to filter repos. If None, fetches authenticated user's repos.
-    """
-    # Get authenticated user info
-    user = await fetch_github_user(access_token)
-    if not user:
-        return None
-
-    username = user.login
-    target_owner = owner or username
-    is_authenticated_user = target_owner.lower() == username.lower()
-
-    async with httpx.AsyncClient() as client:
-        if search and search.strip():
-            # Use GitHub Search API for search queries
-            search_query = f"{search} in:name user:{target_owner} fork:true"
-            response = await client.get(
-                "https://api.github.com/search/repositories",
+        while page <= max_pages:
+            repos_response = await client.get(
+                "https://api.github.com/user/repos",
                 params={
-                    "q": search_query,
-                    "sort": "updated",
-                    "order": "desc",
-                    "per_page": per_page,
+                    "affiliation": "owner,collaborator,organization_member",
+                    "per_page": 100,
                     "page": page,
                 },
                 headers={
@@ -289,16 +243,152 @@ async def fetch_user_repos(
                 },
             )
 
-            if response.status_code == 401:
+            if repos_response.status_code != 200:
+                break
+
+            repos = repos_response.json()
+            if not repos:
+                break
+
+            # Add orgs from repos
+            for repo in repos:
+                owner = repo.get("owner", {})
+                owner_type = owner.get("type")
+                owner_username = owner.get("login")
+
+                # Only add if it's an organization and not already in the map
+                if owner_type == "Organization" and owner_username:
+                    username_lower = owner_username.lower()
+                    if username_lower not in org_map:
+                        org_map[username_lower] = GitHubOwner(
+                            username=owner_username,
+                            avatar_url=owner.get("avatar_url", ""),
+                            type="Organization",
+                        )
+
+            # If we got less than 100 repos, we're on the last page
+            if len(repos) < 100:
+                break
+
+            page += 1
+
+        # Also check repos the user has contributed to (authored commits/PRs)
+        # Get the user's username first
+        user = await fetch_github_user(access_token)
+        if user:
+            # Search for repos where the user has authored code
+            contrib_response = await client.get(
+                "https://api.github.com/search/repositories",
+                params={
+                    "q": f"author:{user.username}",
+                    "per_page": 100,
+                    "sort": "updated",
+                },
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+
+            if contrib_response.status_code == 200:
+                search_data = contrib_response.json()
+                contrib_repos = search_data.get("items", [])
+
+                for repo in contrib_repos:
+                    owner = repo.get("owner", {})
+                    owner_type = owner.get("type")
+                    owner_username = owner.get("login")
+
+                    if owner_type == "Organization" and owner_username:
+                        username_lower = owner_username.lower()
+                        if username_lower not in org_map:
+                            org_map[username_lower] = GitHubOwner(
+                                username=owner_username,
+                                avatar_url=owner.get("avatar_url", ""),
+                                type="Organization",
+                            )
+
+        # Return sorted list (by username)
+        return sorted(org_map.values(), key=lambda o: o.username.lower())
+
+
+async def fetch_user_repos(
+    access_token: str,
+    page: int = 1,
+    per_page: int = 25,
+    search: str | None = None,
+) -> ReposResponse | None:
+    """
+    Fetch repositories the user has contributed to or owns.
+
+    Args:
+        access_token: GitHub OAuth token
+        page: Page number (1-indexed)
+        per_page: Number of repos per page (max 100)
+        search: Optional search query to filter repos by name
+
+    Returns:
+        All repos where the user is owner or collaborator (contributed to).
+        Excludes repos from orgs they're just a member of.
+    """
+    # Get authenticated user info
+    user = await fetch_github_user(access_token)
+    if not user:
+        return None
+
+    username = user.username
+
+    async with httpx.AsyncClient() as client:
+        if search and search.strip():
+            # For search, fetch all contributed repos and filter client-side
+            # This is simpler and more accurate than using GitHub search
+            all_repos_response = await client.get(
+                "https://api.github.com/user/repos",
+                params={
+                    "affiliation": "owner,collaborator",
+                    "per_page": 100,
+                    "visibility": "all",
+                    "sort": "updated",
+                    "direction": "desc",
+                },
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+
+            if all_repos_response.status_code == 401:
                 return None
-            if response.status_code == 403:
+            if all_repos_response.status_code == 403:
                 raise Exception("rate_limit")
-            if response.status_code != 200:
+            if all_repos_response.status_code != 200:
                 raise Exception("fetch_failed")
 
-            data = response.json()
-            repos = data.get("items", [])
-            total_count = data.get("total_count", 0)
+            all_repos = all_repos_response.json()
+
+            # Filter by search term and sort by relevance
+            search_lower = search.lower()
+
+            # Separate name matches from description-only matches
+            name_matches = [
+                repo for repo in all_repos
+                if search_lower in repo["name"].lower()
+            ]
+
+            desc_only_matches = [
+                repo for repo in all_repos
+                if search_lower not in repo["name"].lower() and
+                   repo.get("description") and search_lower in repo["description"].lower()
+            ]
+
+            # Combine: name matches first, then description matches
+            repos = name_matches + desc_only_matches
+            total_count = len(repos)
+
+            # Apply pagination to search results
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            paginated_repos = repos[start_idx:end_idx]
 
             return ReposResponse(
                 repos=[
@@ -312,60 +402,31 @@ async def fetch_user_repos(
                         language=repo["language"],
                         stargazers_count=repo["stargazers_count"],
                         updated_at=repo["updated_at"],
+                        owner_username=repo["owner"]["login"],
+                        owner_type=repo["owner"]["type"],
+                        owner_avatar_url=repo["owner"]["avatar_url"],
                     )
-                    for repo in repos
+                    for repo in paginated_repos
                 ],
                 page=page,
                 per_page=per_page,
-                has_more=total_count > page * per_page,
+                has_more=total_count > end_idx,
                 username=username,
                 total_count=total_count,
             )
         else:
-            # Determine the API endpoint based on owner
-            if is_authenticated_user:
-                # Fetch authenticated user's own repos (sorted by last updated)
-                api_url = "https://api.github.com/user/repos"
-                params = {
+            # Fetch repos the user has actually contributed to or owns
+            # Using owner,collaborator excludes repos from orgs they're just a member of
+            response = await client.get(
+                "https://api.github.com/user/repos",
+                params={
                     "sort": "updated",
                     "direction": "desc",
                     "per_page": per_page,
                     "page": page,
+                    "affiliation": "owner,collaborator",  # Only repos they own or contribute to
                     "visibility": "all",
-                    "affiliation": "owner",
-                }
-            else:
-                # Check if owner is an organization
-                org_response = await client.get(
-                    f"https://api.github.com/orgs/{target_owner}",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "Accept": "application/vnd.github+json",
-                    },
-                )
-
-                if org_response.status_code == 200:
-                    # It's an org - use org repos endpoint
-                    api_url = f"https://api.github.com/orgs/{target_owner}/repos"
-                    params = {
-                        "sort": "updated",
-                        "direction": "desc",
-                        "per_page": per_page,
-                        "page": page,
-                    }
-                else:
-                    # It's a user - use users repos endpoint (public only for other users)
-                    api_url = f"https://api.github.com/users/{target_owner}/repos"
-                    params = {
-                        "sort": "updated",
-                        "direction": "desc",
-                        "per_page": per_page,
-                        "page": page,
-                    }
-
-            response = await client.get(
-                api_url,
-                params=params,
+                },
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Accept": "application/vnd.github+json",
@@ -381,6 +442,7 @@ async def fetch_user_repos(
 
             repos = response.json()
 
+            # GitHub's pagination: if we got exactly per_page repos, there might be more
             return ReposResponse(
                 repos=[
                     RepoInfo(
@@ -393,12 +455,15 @@ async def fetch_user_repos(
                         language=repo["language"],
                         stargazers_count=repo["stargazers_count"],
                         updated_at=repo["updated_at"],
+                        owner_username=repo["owner"]["login"],
+                        owner_type=repo["owner"]["type"],
+                        owner_avatar_url=repo["owner"]["avatar_url"],
                     )
                     for repo in repos
                 ],
                 page=page,
                 per_page=per_page,
-                has_more=len(repos) == per_page,
+                has_more=len(repos) == per_page,  # If we got exactly per_page, there might be more
                 username=username,
             )
 
