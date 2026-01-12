@@ -14,8 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getProject } from "@/app/actions/api";
+import { getProject, getProjects } from "@/app/actions/api";
 import { SettingsTab } from "./tabs/settings";
+import { ProjectBreadcrumbs } from "./project-breadcrumbs";
 
 // TODO: Replace with actual API call when runs API is implemented
 const mockRuns = [
@@ -55,8 +56,11 @@ interface Props {
 export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
 
-  // Fetch project
-  const projectResult = await getProject(Number(id));
+  // Fetch project and all projects in parallel
+  const [projectResult, projectsResult] = await Promise.all([
+    getProject(Number(id)),
+    getProjects(),
+  ]);
 
   // Handle project not found
   if (!projectResult.success) {
@@ -72,10 +76,13 @@ export default async function ProjectPage({ params }: Props) {
   }
 
   const project = projectResult.project!;
+  const allProjects = projectsResult.projects ?? [];
   const repoFullName = `${project.repo_owner}/${project.repo_name}`;
 
   return (
-    <div className="space-y-6">
+    <>
+      <ProjectBreadcrumbs currentProject={project} allProjects={allProjects} />
+      <div className="space-y-6">
         {/* Project Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <a
@@ -189,6 +196,7 @@ export default async function ProjectPage({ params }: Props) {
           </TabsContent>
         </Tabs>
       </div>
+    </>
   );
 }
 
