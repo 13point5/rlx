@@ -93,7 +93,7 @@ async def callback(
         existing = result.scalar_one_or_none()
 
         if existing:
-            existing.github_user_id = github_user.id
+            existing.github_user_id = str(github_user.id)
             existing.github_username = github_user.username
             existing.access_token = token_data.access_token
             existing.refresh_token = token_data.refresh_token
@@ -102,7 +102,7 @@ async def callback(
         else:
             new_connection = GitHubConnection(
                 clerk_user_id=clerk_user_id,
-                github_user_id=github_user.id,
+                github_user_id=str(github_user.id),
                 github_username=github_user.username,
                 access_token=token_data.access_token,
                 refresh_token=token_data.refresh_token,
