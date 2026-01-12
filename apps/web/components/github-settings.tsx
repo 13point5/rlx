@@ -27,8 +27,9 @@ export function GitHubSettings() {
     const messageParam = searchParams.get("message");
 
     if (githubParam === "connected") {
-      router.replace("/settings", { scroll: false });
-      checkConnectionStatus();
+      checkConnectionStatus().then(() => {
+        router.replace("/settings", { scroll: false });
+      });
     } else if (githubParam === "error") {
       setState("error");
       setError(messageParam || "Failed to connect to GitHub");
@@ -41,19 +42,25 @@ export function GitHubSettings() {
 
   async function checkConnectionStatus() {
     setState("loading");
-    const result = await getGitHubStatus();
+    try {
+      const result = await getGitHubStatus();
 
-    if (!result.success) {
+      if (!result.success) {
+        setState("error");
+        setError(result.error || "Failed to check connection status");
+        return;
+      }
+
+      if (result.connected) {
+        setState("connected");
+        setUsername(result.username || null);
+      } else {
+        setState("disconnected");
+      }
+    } catch (err) {
+      console.error("Error checking GitHub status:", err);
       setState("error");
-      setError(result.error || "Failed to check connection status");
-      return;
-    }
-
-    if (result.connected) {
-      setState("connected");
-      setUsername(result.username || null);
-    } else {
-      setState("disconnected");
+      setError("Failed to check connection status");
     }
   }
 
