@@ -158,7 +158,6 @@ export function GitHubConnect() {
         <CardContent className="space-y-4">
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={handleConnect} className="w-full">
-            <GitHubIcon className="h-4 w-4" />
             Connect to GitHub
           </Button>
         </CardContent>
