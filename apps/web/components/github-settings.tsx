@@ -59,7 +59,7 @@ export function GitHubSettings() {
 
   async function handleConnect() {
     setState("connecting");
-    const result = await getGitHubAuthUrl();
+    const result = await getGitHubAuthUrl("/settings");
 
     if (result.success && result.authorization_url) {
       window.location.href = result.authorization_url;
