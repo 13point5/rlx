@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { getGitHubStatus } from "@/app/actions/api";
+import { getStorageItem, setStorageItem } from "@/lib/storage";
 
 interface OnboardingWrapperProps {
   children: React.ReactNode;
@@ -16,7 +17,7 @@ export function OnboardingWrapper({ children, hasProjects }: OnboardingWrapperPr
   useEffect(() => {
     const checkOnboardingStatus = async () => {
       // Check if user has already completed onboarding
-      const hasCompletedOnboarding = localStorage.getItem("onboarding_completed");
+      const hasCompletedOnboarding = getStorageItem("onboarding_completed");
 
       if (hasCompletedOnboarding) {
         setIsChecking(false);
@@ -25,7 +26,7 @@ export function OnboardingWrapper({ children, hasProjects }: OnboardingWrapperPr
 
       // If user has projects, consider onboarding complete
       if (hasProjects) {
-        localStorage.setItem("onboarding_completed", "true");
+        setStorageItem("onboarding_completed", "true");
         setIsChecking(false);
         return;
       }
@@ -35,7 +36,7 @@ export function OnboardingWrapper({ children, hasProjects }: OnboardingWrapperPr
 
       if (status.connected) {
         // User has GitHub connected, mark onboarding as complete
-        localStorage.setItem("onboarding_completed", "true");
+        setStorageItem("onboarding_completed", "true");
         setIsChecking(false);
       } else {
         // First-time user without GitHub connection - show onboarding
@@ -50,7 +51,7 @@ export function OnboardingWrapper({ children, hasProjects }: OnboardingWrapperPr
   const handleOnboardingClose = (open: boolean) => {
     if (!open) {
       // User closed or completed onboarding
-      localStorage.setItem("onboarding_completed", "true");
+      setStorageItem("onboarding_completed", "true");
       setShowOnboarding(false);
     }
   };
