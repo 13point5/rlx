@@ -7,6 +7,14 @@ const isDev = process.env.NODE_ENV === "development";
 const PREFIX = isDev ? "rlx-dev" : "rlx";
 
 /**
+ * LocalStorage key constants
+ * Define all localStorage keys here to avoid typos and ensure consistency
+ */
+export const STORAGE_KEYS = {
+  ONBOARDING_DISMISSED: "onboarding_dismissed",
+} as const;
+
+/**
  * Get the prefixed key for localStorage
  */
 function getPrefixedKey(key: string): string {

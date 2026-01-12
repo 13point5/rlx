@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { GitHubConnect } from "@/components/github-connect";
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { setStorageItem, STORAGE_KEYS } from "@/lib/storage";
 
 interface OnboardingModalProps {
   open: boolean;
@@ -20,6 +21,8 @@ export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
   const [showConnect, setShowConnect] = useState(false);
 
   const handleSkip = () => {
+    // Mark onboarding as skipped/dismissed
+    setStorageItem(STORAGE_KEYS.ONBOARDING_DISMISSED, "true");
     onOpenChange(false);
   };
 
@@ -27,8 +30,16 @@ export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
     setShowConnect(true);
   };
 
+  const handleDialogChange = (isOpen: boolean) => {
+    // If dialog is being closed, mark as dismissed
+    if (!isOpen) {
+      setStorageItem(STORAGE_KEYS.ONBOARDING_DISMISSED, "true");
+    }
+    onOpenChange(isOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Welcome to RLX!</DialogTitle>
