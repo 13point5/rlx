@@ -9,6 +9,11 @@ export function AuthLayoutContent({ children }: { children: React.ReactNode }) {
   const { breadcrumbs, isLoading, setIsLoading } = useBreadcrumbs();
   const pathname = usePathname();
 
+  // TODO: Fix breadcrumb loading skeleton behavior during navigation
+  // Current implementation doesn't properly handle all edge cases
+  // - Loading state should show during route transitions
+  // - Should clear when new page data is loaded
+  // - Needs proper synchronization without setTimeout hacks
   useEffect(() => {
     // Start loading when route changes
     setIsLoading(true);
