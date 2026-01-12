@@ -23,7 +23,7 @@ GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 
 
 @router.get("/authorize")
-async def authorize(user: CurrentUser, redirect_to: str = "/home"):
+async def authorize(user: CurrentUser, redirect_to: str):
     """Returns the GitHub OAuth authorization URL."""
     clerk_user_id = user.get("sub")
 

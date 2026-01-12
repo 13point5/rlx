@@ -78,7 +78,7 @@ export type GitHubRepo = {
   owner_avatar_url: string;
 };
 
-export async function getGitHubAuthUrl(redirectTo: string = "/home"): Promise<{
+export async function getGitHubAuthUrl(redirectTo: string): Promise<{
   success: boolean;
   authorization_url?: string;
   error?: string;

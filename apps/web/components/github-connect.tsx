@@ -77,7 +77,7 @@ export function GitHubConnect() {
 
   async function handleConnect() {
     setState("connecting");
-    const result = await getGitHubAuthUrl();
+    const result = await getGitHubAuthUrl("/home");
 
     if (result.success && result.authorization_url) {
       window.location.href = result.authorization_url;
