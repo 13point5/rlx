@@ -1,6 +1,5 @@
 import Image from "next/image";
-import { currentUser } from "@clerk/nextjs/server";
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -55,12 +54,7 @@ interface Props {
 }
 
 export default async function ProjectPage({ params }: Props) {
-  const user = await currentUser();
   const { id } = await params;
-
-  if (!user) {
-    redirect("/sign-in");
-  }
 
   // Fetch project and all projects in parallel
   const [projectResult, projectsResult] = await Promise.all([
@@ -74,12 +68,10 @@ export default async function ProjectPage({ params }: Props) {
       notFound();
     }
     return (
-      <AppShell>
-        <ErrorState
-          title="Failed to load project"
-          message={projectResult.error}
-        />
-      </AppShell>
+      <ErrorState
+        title="Failed to load project"
+        message={projectResult.error}
+      />
     );
   }
 
