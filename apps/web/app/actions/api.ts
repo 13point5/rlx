@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
+import { revalidatePath } from "next/cache";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -509,6 +510,9 @@ export async function deleteProject(id: number): Promise<{
         Authorization: `Bearer ${token}`,
       },
     });
+
+    // Revalidate the home page cache so navigation shows updated project list
+    revalidatePath("/home");
 
     return { success: true };
   } catch (error) {

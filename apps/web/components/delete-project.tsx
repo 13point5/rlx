@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,13 @@ export function DeleteProject({ projectId, projectName }: DeleteProjectProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Prefetch the home page when dialog opens to make navigation instant
+  useEffect(() => {
+    if (isOpen) {
+      router.prefetch("/home");
+    }
+  }, [isOpen, router]);
+
   const handleDelete = async () => {
     if (isDeleting) {
       return;
@@ -41,7 +48,9 @@ export function DeleteProject({ projectId, projectName }: DeleteProjectProps) {
     if (result.success) {
       setIsOpen(false);
       setIsDeleting(false);
-      router.push("/home");
+      // Use replace instead of push for smoother transition
+      // The home page is already prefetched, so this should feel instant
+      router.replace("/home");
     } else {
       setError(result.error || "Failed to delete project");
       setIsDeleting(false);
