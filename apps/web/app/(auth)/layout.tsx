@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/app-shell";
+import { AppHeader } from "@/components/app-header";
 
 export default async function AuthLayout({
   children,
@@ -13,5 +13,10 @@ export default async function AuthLayout({
     redirect("/sign-in");
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+      <main className="container mx-auto px-4 py-6">{children}</main>
+    </div>
+  );
 }

@@ -2,7 +2,6 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getProject, getProjects } from "@/app/actions/api";
+import { getProject } from "@/app/actions/api";
 import { SettingsTab } from "./tabs/settings";
 
 // TODO: Replace with actual API call when runs API is implemented
@@ -56,11 +55,8 @@ interface Props {
 export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
 
-  // Fetch project and all projects in parallel
-  const [projectResult, projectsResult] = await Promise.all([
-    getProject(Number(id)),
-    getProjects(),
-  ]);
+  // Fetch project
+  const projectResult = await getProject(Number(id));
 
   // Handle project not found
   if (!projectResult.success) {
@@ -76,23 +72,10 @@ export default async function ProjectPage({ params }: Props) {
   }
 
   const project = projectResult.project!;
-  const allProjects = projectsResult.projects ?? [];
   const repoFullName = `${project.repo_owner}/${project.repo_name}`;
 
-  const breadcrumbs = [
-    {
-      label: project.repo_name,
-      items: allProjects.map((p) => ({
-        label: p.repo_name,
-        href: `/projects/${p.id}`,
-        active: p.id === project.id,
-      })),
-    },
-  ];
-
   return (
-    <AppShell breadcrumbs={breadcrumbs}>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Project Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <a
@@ -206,7 +189,6 @@ export default async function ProjectPage({ params }: Props) {
           </TabsContent>
         </Tabs>
       </div>
-    </AppShell>
   );
 }
 
