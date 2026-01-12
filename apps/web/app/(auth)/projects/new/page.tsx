@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Link as LinkIcon, Loader2, AlertCircle } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
-import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -121,8 +120,7 @@ export default function NewProjectPage() {
   };
 
   return (
-    <AppShell>
-      <div className="mx-auto max-w-2xl space-y-8 py-8">
+    <div className="mx-auto max-w-2xl space-y-8 py-8">
         {/* Header */}
         <div className="space-y-4">
           <h1 className="text-3xl font-bold tracking-tight">
@@ -273,6 +271,5 @@ export default function NewProjectPage() {
           </div>
         </div>
       </div>
-    </AppShell>
   );
 }

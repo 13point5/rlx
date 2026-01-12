@@ -1,9 +1,7 @@
 import Image from "next/image";
-import { currentUser } from "@clerk/nextjs/server";
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { getProject, getProjects } from "@/app/actions/api";
 import { SettingsTab } from "./tabs/settings";
+import { ProjectBreadcrumbs } from "./project-breadcrumbs";
 
 // TODO: Replace with actual API call when runs API is implemented
 const mockRuns = [
@@ -55,12 +54,7 @@ interface Props {
 }
 
 export default async function ProjectPage({ params }: Props) {
-  const user = await currentUser();
   const { id } = await params;
-
-  if (!user) {
-    redirect("/sign-in");
-  }
 
   // Fetch project and all projects in parallel
   const [projectResult, projectsResult] = await Promise.all([
@@ -74,12 +68,10 @@ export default async function ProjectPage({ params }: Props) {
       notFound();
     }
     return (
-      <AppShell>
-        <ErrorState
-          title="Failed to load project"
-          message={projectResult.error}
-        />
-      </AppShell>
+      <ErrorState
+        title="Failed to load project"
+        message={projectResult.error}
+      />
     );
   }
 
@@ -87,19 +79,9 @@ export default async function ProjectPage({ params }: Props) {
   const allProjects = projectsResult.projects ?? [];
   const repoFullName = `${project.repo_owner}/${project.repo_name}`;
 
-  const breadcrumbs = [
-    {
-      label: project.repo_name,
-      items: allProjects.map((p) => ({
-        label: p.repo_name,
-        href: `/projects/${p.id}`,
-        active: p.id === project.id,
-      })),
-    },
-  ];
-
   return (
-    <AppShell breadcrumbs={breadcrumbs}>
+    <>
+      <ProjectBreadcrumbs currentProject={project} allProjects={allProjects} />
       <div className="space-y-6">
         {/* Project Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -214,7 +196,7 @@ export default async function ProjectPage({ params }: Props) {
           </TabsContent>
         </Tabs>
       </div>
-    </AppShell>
+    </>
   );
 }
 

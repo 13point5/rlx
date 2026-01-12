@@ -78,7 +78,7 @@ export type GitHubRepo = {
   owner_avatar_url: string;
 };
 
-export async function getGitHubAuthUrl(): Promise<{
+export async function getGitHubAuthUrl(redirectTo: string): Promise<{
   success: boolean;
   authorization_url?: string;
   error?: string;
@@ -99,6 +99,9 @@ export async function getGitHubAuthUrl(): Promise<{
     const response = await axios.get(`${API_BASE_URL}/api/github/authorize`, {
       headers: {
         Authorization: `Bearer ${token}`,
+      },
+      params: {
+        redirect_to: redirectTo,
       },
     });
 

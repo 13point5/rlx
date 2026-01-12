@@ -10,7 +10,7 @@ import {
   type GitHubRepo,
 } from "@/app/actions/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ConnectionState = "loading" | "disconnected" | "connecting" | "connected" | "error";
@@ -77,7 +77,7 @@ export function GitHubConnect() {
 
   async function handleConnect() {
     setState("connecting");
-    const result = await getGitHubAuthUrl();
+    const result = await getGitHubAuthUrl("/home");
 
     if (result.success && result.authorization_url) {
       window.location.href = result.authorization_url;
@@ -151,14 +151,13 @@ export function GitHubConnect() {
             <GitHubIcon className="h-5 w-5" />
             GitHub
           </CardTitle>
+          <CardDescription>
+            Connect your GitHub account to see your repositories.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Connect your GitHub account to see your repositories.
-          </p>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={handleConnect} className="w-full">
-            <GitHubIcon className="mr-2 h-4 w-4" />
             Connect to GitHub
           </Button>
         </CardContent>

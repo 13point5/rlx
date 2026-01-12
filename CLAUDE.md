@@ -179,6 +179,53 @@ async def list_items(user: CurrentUser, db: DbSession):
 - Use `cn()` utility from `lib/utils` for className merging
 - Follow patterns in `apps/web/AGENTS.md`
 
+### React Code Quality Rules
+
+**NEVER use setTimeout as a hack for timing/state issues.** This is unreliable and causes race conditions.
+
+**Bad Examples:**
+```tsx
+// ❌ Using setTimeout to "wait" for state updates
+useEffect(() => {
+  setIsLoading(true);
+  setBreadcrumbs([...items]);
+  setTimeout(() => setIsLoading(false), 100); // Race condition!
+}, [items]);
+
+// ❌ Using setTimeout to "fix" async navigation
+const handleSave = async () => {
+  await saveData();
+  setTimeout(() => router.push('/home'), 200); // Wrong
+};
+```
+
+**Good Alternatives:**
+```tsx
+// ✅ Use proper async/await patterns
+useEffect(() => {
+  const loadData = async () => {
+    setIsLoading(true);
+    const data = await fetchData();
+    setBreadcrumbs(data);
+    setIsLoading(false);
+  };
+  loadData();
+}, []);
+
+// ✅ Handle navigation after async operations
+const handleSave = async () => {
+  setIsLoading(true);
+  await saveData();
+  setIsLoading(false);
+  router.push('/home');
+};
+```
+
+**Acceptable setTimeout uses:**
+- Debouncing user input
+- Intentional delays (e.g., auto-dismiss notifications)
+- Animations requiring specific timing
+
 ## Environment Variables
 
 ### Frontend (`apps/web/.env.local`)

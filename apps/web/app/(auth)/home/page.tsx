@@ -1,37 +1,25 @@
-import { currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { ProjectCard } from "@/components/project-card";
+import { OnboardingWrapper } from "@/components/onboarding-wrapper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getProjects } from "@/app/actions/api";
 
 export default async function HomePage() {
-  const user = await currentUser();
-
-  if (!user) {
-    redirect("/sign-in");
-  }
-
   const result = await getProjects();
 
   if (!result.success) {
-    return (
-      <AppShell>
-        <ErrorState title="Failed to load projects" message={result.error} />
-      </AppShell>
-    );
+    return <ErrorState title="Failed to load projects" message={result.error} />;
   }
 
   const projects = result.projects ?? [];
   const hasProjects = projects.length > 0;
 
   return (
-    <AppShell>
+    <OnboardingWrapper hasProjects={hasProjects}>
       <div className="space-y-6">
         {/* Header */}
         <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
@@ -66,6 +54,6 @@ export default async function HomePage() {
           />
         )}
       </div>
-    </AppShell>
+    </OnboardingWrapper>
   );
 }

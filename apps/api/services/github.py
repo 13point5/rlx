@@ -153,6 +153,7 @@ class ReposResponse:
 
 @dataclass
 class GitHubOwner:
+    id: int
     username: str
     avatar_url: str
     type: str  # "User" or "Organization"
@@ -187,6 +188,7 @@ async def fetch_github_user(access_token: str) -> GitHubOwner | None:
             return None
         data = response.json()
         return GitHubOwner(
+            id=data["id"],
             username=data["login"],
             avatar_url=data["avatar_url"],
             type="User",
@@ -220,6 +222,7 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
         # Add member orgs first
         for org in member_orgs:
             org_map[org["login"].lower()] = GitHubOwner(
+                id=org["id"],
                 username=org["login"],
                 avatar_url=org["avatar_url"],
                 type="Organization",
@@ -261,6 +264,7 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
                     username_lower = owner_username.lower()
                     if username_lower not in org_map:
                         org_map[username_lower] = GitHubOwner(
+                            id=owner.get("id", 0),
                             username=owner_username,
                             avatar_url=owner.get("avatar_url", ""),
                             type="Organization",
@@ -303,6 +307,7 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
                         username_lower = owner_username.lower()
                         if username_lower not in org_map:
                             org_map[username_lower] = GitHubOwner(
+                                id=owner.get("id", 0),
                                 username=owner_username,
                                 avatar_url=owner.get("avatar_url", ""),
                                 type="Organization",

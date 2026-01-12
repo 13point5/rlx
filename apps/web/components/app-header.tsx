@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface BreadcrumbItem {
   label: string;
@@ -35,9 +36,10 @@ interface BreadcrumbItem {
 
 interface AppHeaderProps {
   breadcrumbs?: BreadcrumbItem[];
+  isLoading?: boolean;
 }
 
-export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
+export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
 
@@ -55,7 +57,15 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
         </Link>
 
         {/* Breadcrumbs */}
-        {breadcrumbs.length > 0 && (
+        {isLoading ? (
+          <div className="flex items-center text-sm">
+            <span className="mx-3 text-muted-foreground/50">/</span>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded-sm" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          </div>
+        ) : breadcrumbs.length > 0 ? (
           <nav className="flex items-center text-sm">
             {breadcrumbs.map((crumb, index) => (
               <div key={index} className="flex items-center">
@@ -118,7 +128,7 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
               </div>
             ))}
           </nav>
-        )}
+        ) : null}
 
         {/* Right side */}
         <div className="ml-auto flex items-center gap-2">
@@ -142,9 +152,11 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Settings className="mr-2 size-4" />
-                  Settings
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="mr-2 size-4" />
+                    Settings
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/" })}>
