@@ -21,6 +21,8 @@ interface BreadcrumbItem {
 interface BreadcrumbContextType {
   breadcrumbs: BreadcrumbItem[];
   setBreadcrumbs: (breadcrumbs: BreadcrumbItem[]) => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
 const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(
@@ -29,9 +31,10 @@ const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(
 
 export function BreadcrumbProvider({ children }: { children: React.ReactNode }) {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
-    <BreadcrumbContext.Provider value={{ breadcrumbs, setBreadcrumbs }}>
+    <BreadcrumbContext.Provider value={{ breadcrumbs, setBreadcrumbs, isLoading, setIsLoading }}>
       {children}
     </BreadcrumbContext.Provider>
   );

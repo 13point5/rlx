@@ -42,9 +42,6 @@ export function ProjectBreadcrumbs({
         })),
       },
     ]);
-
-    // Clear breadcrumbs on unmount
-    return () => setBreadcrumbs([]);
   }, [currentProject, allProjects, setBreadcrumbs]);
 
   return null;

@@ -236,6 +236,84 @@ Most design tokens already handle dark mode automatically.
 - **Variants**: camelCase (`buttonVariants`)
 - **CSS classes**: Use Tailwind utilities
 
+## React Anti-Patterns to Avoid
+
+### NEVER Use setTimeout as a Hack
+
+Do not use `setTimeout` to work around timing, rendering, or state update issues. This is a common LLM mistake and leads to unreliable, race-condition-prone code.
+
+**Bad Examples:**
+
+```tsx
+// ❌ BAD: Using setTimeout to "wait" for state to update
+useEffect(() => {
+  setIsLoading(true);
+  setBreadcrumbs([...items]);
+  setTimeout(() => setIsLoading(false), 100); // Race condition!
+}, [items]);
+
+// ❌ BAD: Using setTimeout to "delay" rendering
+useEffect(() => {
+  setTimeout(() => {
+    setShowModal(true);
+  }, 50); // Arbitrary delay
+}, []);
+
+// ❌ BAD: Using setTimeout to "fix" async issues
+const handleSave = async () => {
+  await saveData();
+  setTimeout(() => {
+    router.push('/home'); // Wrong way to handle async
+  }, 200);
+};
+```
+
+**Good Alternatives:**
+
+```tsx
+// ✅ GOOD: Use proper state transitions
+useEffect(() => {
+  const loadData = async () => {
+    setIsLoading(true);
+    const data = await fetchData();
+    setBreadcrumbs(data);
+    setIsLoading(false); // Clear after async operation
+  };
+  loadData();
+}, []);
+
+// ✅ GOOD: Use useLayoutEffect for synchronous updates
+useLayoutEffect(() => {
+  setBreadcrumbs([...items]);
+}, [items]);
+
+// ✅ GOOD: Handle async properly with await
+const handleSave = async () => {
+  setIsLoading(true);
+  await saveData();
+  setIsLoading(false);
+  router.push('/home');
+};
+
+// ✅ GOOD: Use navigation events for route-based loading
+const pathname = usePathname();
+useEffect(() => {
+  setIsLoading(true);
+  // Component will re-render with new data, then clear loading
+}, [pathname]);
+
+useEffect(() => {
+  if (dataLoaded) {
+    setIsLoading(false);
+  }
+}, [dataLoaded]);
+```
+
+**The only acceptable use of setTimeout:**
+- Debouncing user input
+- Implementing actual intentional delays (e.g., auto-dismiss notifications after 5 seconds)
+- Animations or transitions that require specific timing
+
 ## Checklist for New Components
 
 - [ ] Uses `cn()` for className merging
@@ -245,3 +323,4 @@ Most design tokens already handle dark mode automatically.
 - [ ] Exports component (and variants if applicable)
 - [ ] Has proper TypeScript types
 - [ ] Is responsive (works on mobile and desktop)
+- [ ] Does not use setTimeout as a hack for timing/state issues
