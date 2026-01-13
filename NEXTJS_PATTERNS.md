@@ -1344,3 +1344,284 @@ export function ResizableSidebar({ children }: Props) {
 ---
 
 **End of Notes**
+
+---
+
+## 11. Parallel Routes & Dynamic Breadcrumbs
+
+### What Are Parallel Routes?
+
+Parallel routes allow you to **simultaneously or conditionally render multiple pages within the same layout** using named slots. They're perfect for:
+- Dynamic breadcrumbs
+- Dashboard sections with independent loading states
+- Conditional rendering based on auth/role
+- Modal patterns with deep linking
+
+### The @folder Convention
+
+Parallel routes use `@slotName` folders to define named slots:
+
+```
+app/
+├── layout.tsx
+├── page.tsx
+├── @breadcrumbs/
+│   ├── [...catchAll]/
+│   │   └── page.tsx
+│   └── default.tsx
+└── @analytics/
+    └── page.tsx
+```
+
+**Important**: Slots do **not** affect URL structure. `/@breadcrumbs/foo` renders at `/foo`, not `/@breadcrumbs/foo`.
+
+---
+
+### Dynamic Breadcrumbs Pattern (RECOMMENDED)
+
+**Problem with Client-Side Approach:**
+- ❌ Using Context + useEffect creates race conditions
+- ❌ Manual state management with atoms/context is fragile
+- ❌ Breadcrumbs can flicker during navigation
+- ❌ Hard to keep in sync with URL
+
+**Better Approach: Parallel Routes + Catch-All**
+
+**File Structure:**
+```
+app/
+├── layout.tsx                    # Accepts breadcrumbs slot
+├── @breadcrumbs/
+│   ├── [...catchAll]/
+│   │   └── page.tsx             # Builds breadcrumbs from params
+│   └── default.tsx              # Fallback (renders null)
+└── projects/
+    └── [id]/
+        ├── page.tsx
+        └── runs/
+            └── [runId]/
+                └── page.tsx
+```
+
+**Layout with Breadcrumb Slot:**
+```tsx
+// app/layout.tsx
+export default function RootLayout({
+  children,
+  breadcrumbs,  // ✅ Breadcrumbs slot passed as prop
+}: {
+  children: React.ReactNode
+  breadcrumbs: React.ReactNode
+}) {
+  return (
+    <html>
+      <body>
+        <header>
+          <nav>{breadcrumbs}</nav>  {/* ✅ Render breadcrumbs */}
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  )
+}
+```
+
+**Breadcrumb Slot Implementation:**
+```tsx
+// app/@breadcrumbs/[...catchAll]/page.tsx
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+
+interface BreadcrumbsPageProps {
+  params: Promise<{
+    catchAll: string[]
+  }>
+}
+
+export default async function BreadcrumbsPage({ params }: BreadcrumbsPageProps) {
+  const { catchAll } = await params
+  
+  // Build breadcrumbs from URL segments
+  let href = ""
+  const breadcrumbs = catchAll.map((segment, index) => {
+    href += `/${segment}`
+    const isLast = index === catchAll.length - 1
+    
+    return {
+      label: formatSegment(segment),  // e.g., "projects" → "Projects"
+      href,
+      isLast,
+    }
+  })
+
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/">Home</BreadcrumbLink>
+        </BreadcrumbItem>
+        
+        {breadcrumbs.map((crumb) => (
+          <React.Fragment key={crumb.href}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              {crumb.isLast ? (
+                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          </React.Fragment>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
+}
+
+function formatSegment(segment: string): string {
+  // Handle dynamic segments like [id]
+  // "projects" → "Projects"
+  // "123" → "Project 123" (if following "projects")
+  return segment.charAt(0).toUpperCase() + segment.slice(1)
+}
+```
+
+**Fallback for Unmatched Routes:**
+```tsx
+// app/@breadcrumbs/default.tsx
+export default function BreadcrumbsDefault() {
+  return null  // Don't render breadcrumbs on pages without catchAll match
+}
+```
+
+---
+
+### Benefits of Parallel Routes for Breadcrumbs
+
+1. **✅ No Client State**: Everything is server-rendered from URL params
+2. **✅ No useEffect**: No race conditions or dependency arrays
+3. **✅ Always Synced**: Breadcrumbs automatically match the URL
+4. **✅ Server Components**: Better performance, no hydration
+5. **✅ Clean Separation**: Breadcrumb logic isolated in dedicated slot
+
+---
+
+### Enhanced Breadcrumbs with Data Fetching
+
+For breadcrumbs that need dynamic labels (e.g., project names), fetch data in the breadcrumb page:
+
+```tsx
+// app/@breadcrumbs/projects/[id]/[...rest]/page.tsx
+import { getProject } from "@/lib/cached-api"
+
+interface BreadcrumbsPageProps {
+  params: Promise<{
+    id: string
+    rest?: string[]
+  }>
+}
+
+export default async function ProjectBreadcrumbs({ params }: BreadcrumbsPageProps) {
+  const { id, rest = [] } = await params
+  
+  // ✅ Fetch project data server-side
+  const projectResult = await getProject(Number(id))
+  const projectName = projectResult.project?.repo_name || `Project ${id}`
+  
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/">Home</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/projects">Projects</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbLink href={`/projects/${id}`}>
+            {projectName}  {/* ✅ Dynamic project name */}
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        
+        {/* Render remaining segments */}
+        {rest.map((segment, index) => (
+          <React.Fragment key={segment}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{formatSegment(segment)}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </React.Fragment>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
+}
+```
+
+---
+
+### Conditional Rendering with Parallel Routes
+
+Use parallel routes to show different content based on conditions:
+
+```tsx
+// app/dashboard/layout.tsx
+export default function DashboardLayout({
+  children,
+  admin,
+  user,
+}: {
+  children: React.ReactNode
+  admin: React.ReactNode
+  user: React.ReactNode
+}) {
+  const role = checkUserRole()  // Server-side check
+  
+  return (
+    <>
+      <nav>{role === 'admin' ? admin : user}</nav>
+      <main>{children}</main>
+    </>
+  )
+}
+```
+
+---
+
+### Unmatched Routes & default.js
+
+During **hard navigation** (page refresh), Next.js needs `default.js` for unmatched slots:
+
+```tsx
+// app/@breadcrumbs/default.tsx
+export default function BreadcrumbsDefault() {
+  return null  // or <DefaultBreadcrumbs />
+}
+```
+
+**Navigation Types:**
+- **Soft navigation** (client-side): Slots maintain active state even if unmatched
+- **Hard navigation** (refresh): Renders `default.js` for unmatched slots or 404
+
+---
+
+## Summary: Parallel Routes Best Practices
+
+| Use Case | Pattern |
+|----------|---------|
+| Dynamic breadcrumbs | `@breadcrumbs/[...catchAll]` with params |
+| Conditional UI | Multiple slots + role check in layout |
+| Independent loading | Each slot has its own `loading.tsx` |
+| Modal with deep link | Combine with intercepting routes |
+| Fallback content | Always provide `default.tsx` |
+
+**Key Takeaway:** Parallel routes eliminate the need for client-side breadcrumb state management. Use them for cleaner, more performant, server-rendered breadcrumbs that automatically stay in sync with the URL.
+

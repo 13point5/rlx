@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
@@ -14,9 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getProject, getProjects } from "@/app/actions/api";
+import { getProject } from "@/lib/cached-api";
 import { SettingsTab } from "./tabs/settings";
-import { ProjectBreadcrumbs } from "./project-breadcrumbs";
 import { ProjectHeading } from "@/components/project-heading";
 
 // TODO: Replace with actual API call when runs API is implemented
@@ -57,11 +55,8 @@ interface Props {
 export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
 
-  // Fetch project and all projects in parallel
-  const [projectResult, projectsResult] = await Promise.all([
-    getProject(Number(id)),
-    getProjects(),
-  ]);
+  // Fetch project
+  const projectResult = await getProject(Number(id));
 
   // Handle project not found
   if (!projectResult.success) {
@@ -77,14 +72,11 @@ export default async function ProjectPage({ params }: Props) {
   }
 
   const project = projectResult.project!;
-  const allProjects = projectsResult.projects ?? [];
 
   return (
-    <>
-      <ProjectBreadcrumbs currentProject={project} allProjects={allProjects} />
-      <div className="space-y-6">
-        {/* Project Header */}
-        <ProjectHeading project={project} />
+    <div className="space-y-6">
+      {/* Project Header */}
+      <ProjectHeading project={project} />
 
         {/* Tabs */}
         <Tabs defaultValue="runs" className="space-y-4">
@@ -173,7 +165,6 @@ export default async function ProjectPage({ params }: Props) {
           </TabsContent>
         </Tabs>
       </div>
-    </>
   );
 }
 

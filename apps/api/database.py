@@ -23,7 +23,7 @@ if DATABASE_URL:
     if DATABASE_URL.endswith("?"):
         DATABASE_URL = DATABASE_URL[:-1]
 
-engine = create_async_engine(DATABASE_URL, echo=True) if DATABASE_URL else None
+engine = create_async_engine(DATABASE_URL, echo=True, pool_pre_ping=True) if DATABASE_URL else None
 async_session = (
     async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False) if engine else None
 )

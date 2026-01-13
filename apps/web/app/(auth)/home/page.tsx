@@ -6,7 +6,7 @@ import { ProjectCard } from "@/components/project-card";
 import { OnboardingWrapper } from "@/components/onboarding-wrapper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getProjects } from "@/app/actions/api";
+import { getProjects } from "@/lib/cached-api";
 
 export default async function HomePage() {
   const result = await getProjects();
