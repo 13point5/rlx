@@ -7,8 +7,8 @@ import {
   getGitHubStatus,
   getGitHubRepos,
   disconnectGitHub,
-  type GitHubRepo,
 } from "@/app/actions/api";
+import type { GitHubRepo } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,8 +66,8 @@ export function GitHubConnect() {
     setIsLoadingRepos(true);
     const result = await getGitHubRepos();
 
-    if (result.success && result.repos) {
-      setRepos(result.repos);
+    if (result.success && result.data?.repos) {
+      setRepos(result.data.repos);
     } else if (result.error?.includes("expired") || result.error?.includes("401")) {
       setState("disconnected");
       setError("Your GitHub connection has expired. Please reconnect.");

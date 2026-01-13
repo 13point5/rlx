@@ -1,12 +1,11 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-
-export type GitHubAvatarType = "User" | "Organization" | "user" | "org";
+import { GitHubOwnerType } from "@/types";
 
 interface GitHubAvatarProps {
   username: string;
   avatarUrl: string;
-  type: GitHubAvatarType;
+  type: GitHubOwnerType;
   size?: number;
   className?: string;
 }
@@ -23,8 +22,7 @@ export function GitHubAvatar({
   size = 20,
   className,
 }: GitHubAvatarProps) {
-  const isOrg =
-    type === "Organization" || type === "org";
+  const isOrg = type === "organization";
 
   return (
     <Image
@@ -44,7 +42,7 @@ export function GitHubAvatar({
 interface GitHubOwnerWithLabelProps {
   username: string;
   avatarUrl: string;
-  type: GitHubAvatarType;
+  type: GitHubOwnerType;
   size?: number;
   showOrgLabel?: boolean;
   className?: string;
@@ -61,7 +59,7 @@ export function GitHubOwnerWithLabel({
   showOrgLabel = true,
   className,
 }: GitHubOwnerWithLabelProps) {
-  const isOrg = type === "Organization" || type === "org";
+  const isOrg = type === "organization";
 
   return (
     <div className={cn("flex items-center gap-2", className)}>

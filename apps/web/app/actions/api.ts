@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
+import type { GitHubOwner, GitHubReposResponse } from "@/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -62,21 +63,6 @@ export async function getSecretFromAPI(): Promise<{
 // =============================================================================
 // GitHub Actions
 // =============================================================================
-
-export type GitHubRepo = {
-  id: number;
-  name: string;
-  full_name: string;
-  description: string | null;
-  html_url: string;
-  private: boolean;
-  language: string | null;
-  stargazers_count: number;
-  updated_at: string;
-  owner_username: string;
-  owner_type: "User" | "Organization";
-  owner_avatar_url: string;
-};
 
 export async function getGitHubAuthUrl(redirectTo: string): Promise<{
   success: boolean;
@@ -172,12 +158,6 @@ export async function getGitHubStatus(): Promise<{
   }
 }
 
-export type GitHubOwner = {
-  username: string;
-  avatar_url: string;
-  type: "User" | "Organization";
-};
-
 export async function getGitHubOwners(): Promise<{
   success: boolean;
   owners?: GitHubOwner[];
@@ -220,14 +200,6 @@ export async function getGitHubOwners(): Promise<{
     };
   }
 }
-
-export type GitHubReposResponse = {
-  repos: GitHubRepo[];
-  page: number;
-  per_page: number;
-  has_more: boolean;
-  username: string | null;
-};
 
 export async function getGitHubRepos(options?: {
   page?: number;

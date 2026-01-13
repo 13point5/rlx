@@ -1,4 +1,4 @@
-import { Project } from "@/app/actions/api";
+import type { Project } from "@/types";
 import Image from "next/image";
 
 interface Props {

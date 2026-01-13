@@ -137,7 +137,7 @@ class RepoInfo:
     stargazers_count: int
     updated_at: str
     owner_username: str
-    owner_type: str  # "User" or "Organization"
+    owner_type: str  # "user" or "organization"
     owner_avatar_url: str
 
 
@@ -156,7 +156,7 @@ class GitHubOwner:
     id: int
     username: str
     avatar_url: str
-    type: str  # "User" or "Organization"
+    type: str  # "user" or "organization"
 
 
 async def fetch_github_username(access_token: str) -> str | None:
@@ -191,7 +191,7 @@ async def fetch_github_user(access_token: str) -> GitHubOwner | None:
             id=data["id"],
             username=data["login"],
             avatar_url=data["avatar_url"],
-            type="User",
+            type="user",
         )
 
 
@@ -225,7 +225,7 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
                 id=org["id"],
                 username=org["login"],
                 avatar_url=org["avatar_url"],
-                type="Organization",
+                type="organization",
             )
 
         # Fetch repos the user has access to (with pagination to get more orgs)
@@ -256,18 +256,18 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
             # Add orgs from repos
             for repo in repos:
                 owner = repo.get("owner", {})
-                owner_type = owner.get("type")
+                owner_type = owner.get("type", "").lower()
                 owner_username = owner.get("login")
 
                 # Only add if it's an organization and not already in the map
-                if owner_type == "Organization" and owner_username:
+                if owner_type == "organization" and owner_username:
                     username_lower = owner_username.lower()
                     if username_lower not in org_map:
                         org_map[username_lower] = GitHubOwner(
                             id=owner.get("id", 0),
                             username=owner_username,
                             avatar_url=owner.get("avatar_url", ""),
-                            type="Organization",
+                            type="organization",
                         )
 
             # If we got less than 100 repos, we're on the last page
@@ -300,17 +300,17 @@ async def fetch_user_orgs(access_token: str) -> list[GitHubOwner] | None:
 
                 for repo in contrib_repos:
                     owner = repo.get("owner", {})
-                    owner_type = owner.get("type")
+                    owner_type = owner.get("type", "").lower()
                     owner_username = owner.get("login")
 
-                    if owner_type == "Organization" and owner_username:
+                    if owner_type == "organization" and owner_username:
                         username_lower = owner_username.lower()
                         if username_lower not in org_map:
                             org_map[username_lower] = GitHubOwner(
                                 id=owner.get("id", 0),
                                 username=owner_username,
                                 avatar_url=owner.get("avatar_url", ""),
-                                type="Organization",
+                                type="organization",
                             )
 
         # Return sorted list (by username)
@@ -408,7 +408,7 @@ async def fetch_user_repos(
                         stargazers_count=repo["stargazers_count"],
                         updated_at=repo["updated_at"],
                         owner_username=repo["owner"]["login"],
-                        owner_type=repo["owner"]["type"],
+                        owner_type=repo["owner"]["type"].lower(),
                         owner_avatar_url=repo["owner"]["avatar_url"],
                     )
                     for repo in paginated_repos
@@ -461,7 +461,7 @@ async def fetch_user_repos(
                         stargazers_count=repo["stargazers_count"],
                         updated_at=repo["updated_at"],
                         owner_username=repo["owner"]["login"],
-                        owner_type=repo["owner"]["type"],
+                        owner_type=repo["owner"]["type"].lower(),
                         owner_avatar_url=repo["owner"]["avatar_url"],
                     )
                     for repo in repos
@@ -515,7 +515,7 @@ class RepoDetails:
     id: int
     name: str
     owner: str
-    owner_type: str  # "User" or "Organization"
+    owner_type: str  # "user" or "organization"
     html_url: str
     private: bool
     description: str | None
@@ -565,7 +565,7 @@ async def fetch_repo_info(access_token: str, owner: str, repo: str) -> RepoDetai
         id=data["id"],
         name=data["name"],
         owner=data["owner"]["login"],
-        owner_type=data["owner"]["type"],  # "User" or "Organization"
+        owner_type=data["owner"]["type"].lower(),  # "user" or "organization"
         html_url=data["html_url"],
         private=data["private"],
         description=data.get("description"),

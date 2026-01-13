@@ -6,11 +6,8 @@ import { Search, Link as LinkIcon, Loader2, AlertCircle } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  createProject,
-  getGitHubRepos,
-  type GitHubRepo,
-} from "@/app/actions/api";
+import { createProject, getGitHubRepos } from "@/app/actions/api";
+import type { GitHubRepo } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GitHubAvatar } from "@/components/github-avatar";
 
