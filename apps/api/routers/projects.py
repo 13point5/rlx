@@ -58,6 +58,12 @@ class ProjectListResponse(BaseModel):
 # =============================================================================
 
 
+def normalize_owner_type(owner_type: str) -> str:
+    if owner_type.lower() == "organization" or owner_type.lower() == "org":
+        return "Organization"
+    return "User"
+
+
 async def get_github_connection(clerk_user_id: str, db: DbSession) -> GitHubConnection:
     """Get the user's GitHub connection or raise 401."""
     result = await db.execute(
@@ -96,7 +102,7 @@ def project_to_response(project: Project) -> ProjectResponse:
         repo_id=project.repo_id,
         repo_name=project.repo_name,
         repo_owner=project.repo_owner,
-        repo_owner_type=project.repo_owner_type,
+        repo_owner_type=normalize_owner_type(project.repo_owner_type),
         repo_url=project.repo_url,
         active_runs=0,  # TODO: Calculate from runs table when implemented
         created_at=project.created_at,
@@ -196,7 +202,7 @@ async def create_project(body: CreateProjectRequest, user: CurrentUser, db: DbSe
         repo_id=repo_info.id,
         repo_name=repo_info.name,
         repo_owner=repo_info.owner,
-        repo_owner_type=repo_info.owner_type.lower(),  # "user" or "organization"
+        repo_owner_type=normalize_owner_type(repo_info.owner_type),
         repo_url=repo_info.html_url,
     )
 

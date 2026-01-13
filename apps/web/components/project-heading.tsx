@@ -1,5 +1,5 @@
-import { Project } from "@/app/actions/api";
 import Image from "next/image";
+import type { Project } from "@/lib/types";
 
 interface Props {
   project: Project;
@@ -22,7 +22,7 @@ export const ProjectHeading = ({ project }: Props) => {
           width={24}
           height={24}
           className={
-            project.repo_owner_type === "user" ? "rounded-full" : "rounded-sm"
+            project.repo_owner_type === "User" ? "rounded-full" : "rounded-sm"
           }
         />
         <h1 className="text-xl tracking-tight">

@@ -1,12 +1,11 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-
-export type GitHubAvatarType = "User" | "Organization" | "user" | "org";
+import type { GitHubOwnerType } from "@/lib/types";
 
 interface GitHubAvatarProps {
   username: string;
   avatarUrl: string;
-  type: GitHubAvatarType;
+  type: GitHubOwnerType;
   size?: number;
   className?: string;
 }
@@ -23,8 +22,7 @@ export function GitHubAvatar({
   size = 20,
   className,
 }: GitHubAvatarProps) {
-  const isOrg =
-    type === "Organization" || type === "org";
+  const isOrg = type === "Organization";
 
   return (
     <Image
@@ -44,7 +42,7 @@ export function GitHubAvatar({
 interface GitHubOwnerWithLabelProps {
   username: string;
   avatarUrl: string;
-  type: GitHubAvatarType;
+  type: GitHubOwnerType;
   size?: number;
   showOrgLabel?: boolean;
   className?: string;
@@ -61,11 +59,16 @@ export function GitHubOwnerWithLabel({
   showOrgLabel = true,
   className,
 }: GitHubOwnerWithLabelProps) {
-  const isOrg = type === "Organization" || type === "org";
+  const isOrg = type === "Organization";
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <GitHubAvatar username={username} avatarUrl={avatarUrl} type={type} size={size} />
+      <GitHubAvatar
+        username={username}
+        avatarUrl={avatarUrl}
+        type={type}
+        size={size}
+      />
       <span>{username}</span>
       {isOrg && showOrgLabel && (
         <span className="text-xs text-muted-foreground">(org)</span>

@@ -1,40 +1,5 @@
-import { getProjects, getProject } from "@/app/actions/api";
-
-export interface BreadcrumbItem {
-  label: string;
-  href?: string;
-  icon?: {
-    src: string;
-    alt: string;
-    rounded?: "full" | "sm";
-  };
-  items?: {
-    label: string;
-    href: string;
-    active?: boolean;
-    icon?: { src: string; alt: string; rounded?: "full" | "sm" };
-  }[];
-}
-
-export async function getProjectsDropdown(currentProjectId?: number) {
-  const result = await getProjects();
-  if (!result.success || !result.projects) {
-    return [];
-  }
-
-  return result.projects.map((project) => ({
-    label: project.repo_name,
-    href: `/projects/${project.id}`,
-    active: project.id === currentProjectId,
-    icon: {
-      src: `https://github.com/${project.repo_owner}.png`,
-      alt: project.repo_owner,
-      rounded: (project.repo_owner_type === "user" ? "full" : "sm") as
-        | "full"
-        | "sm",
-    },
-  }));
-}
+import { getProject } from "@/app/actions/api";
+import type { BreadcrumbItem } from "@/lib/types";
 
 export async function generateBreadcrumbs(pathSegments: string[]): Promise<{
   breadcrumbs: BreadcrumbItem[];
@@ -53,6 +18,10 @@ export async function generateBreadcrumbs(pathSegments: string[]): Promise<{
 
         case "projects":
           // Skip "Projects" prefix, just handle project IDs directly
+          break;
+
+        case "runs":
+          // Skip "Runs" prefix, show run details only
           break;
 
         case "settings":
@@ -85,7 +54,6 @@ export async function generateBreadcrumbs(pathSegments: string[]): Promise<{
             }
 
             const project = projectResult.project!;
-            const projectsDropdown = await getProjectsDropdown(projectId);
 
             breadcrumbs.push({
               label: project.repo_name,
@@ -93,11 +61,8 @@ export async function generateBreadcrumbs(pathSegments: string[]): Promise<{
               icon: {
                 src: `https://github.com/${project.repo_owner}.png`,
                 alt: project.repo_owner,
-                rounded: (project.repo_owner_type === "user"
-                  ? "full"
-                  : "sm") as "full" | "sm",
+                type: project.repo_owner_type,
               },
-              items: projectsDropdown,
             });
           } else if (i === 0) {
             // Handle root segments other than home and projects

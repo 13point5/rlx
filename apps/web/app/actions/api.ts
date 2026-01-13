@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
+import type { GitHubOwner, GitHubRepo, Project } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -63,21 +64,6 @@ export async function getSecretFromAPI(): Promise<{
 // GitHub Actions
 // =============================================================================
 
-export type GitHubRepo = {
-  id: number;
-  name: string;
-  full_name: string;
-  description: string | null;
-  html_url: string;
-  private: boolean;
-  language: string | null;
-  stargazers_count: number;
-  updated_at: string;
-  owner_username: string;
-  owner_type: "User" | "Organization";
-  owner_avatar_url: string;
-};
-
 export async function getGitHubAuthUrl(redirectTo: string): Promise<{
   success: boolean;
   authorization_url?: string;
@@ -105,7 +91,10 @@ export async function getGitHubAuthUrl(redirectTo: string): Promise<{
       },
     });
 
-    return { success: true, authorization_url: response.data.authorization_url };
+    return {
+      success: true,
+      authorization_url: response.data.authorization_url,
+    };
   } catch (error) {
     console.error("Error getting GitHub auth URL:", error);
 
@@ -113,7 +102,8 @@ export async function getGitHubAuthUrl(redirectTo: string): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -161,7 +151,8 @@ export async function getGitHubStatus(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -171,12 +162,6 @@ export async function getGitHubStatus(): Promise<{
     };
   }
 }
-
-export type GitHubOwner = {
-  username: string;
-  avatar_url: string;
-  type: "User" | "Organization";
-};
 
 export async function getGitHubOwners(): Promise<{
   success: boolean;
@@ -210,7 +195,8 @@ export async function getGitHubOwners(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -258,7 +244,9 @@ export async function getGitHubRepos(options?: {
     if (options?.search) params.set("search", options.search);
     if (options?.owner) params.set("owner", options.owner);
 
-    const url = `${API_BASE_URL}/api/github/repos${params.toString() ? `?${params.toString()}` : ""}`;
+    const url = `${API_BASE_URL}/api/github/repos${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
 
     const response = await axios.get(url, {
       headers: {
@@ -283,7 +271,8 @@ export async function getGitHubRepos(options?: {
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -329,7 +318,8 @@ export async function disconnectGitHub(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -343,19 +333,6 @@ export async function disconnectGitHub(): Promise<{
 // =============================================================================
 // Project Actions
 // =============================================================================
-
-export type Project = {
-  id: number;
-  repo_id: number;
-  repo_name: string;
-  repo_owner: string;
-  repo_owner_type: "user" | "organization";
-  repo_url: string;
-  repo_full_name: string;
-  active_runs: number;
-  created_at: string;
-  updated_at: string | null;
-};
 
 export async function getProjects(): Promise<{
   success: boolean;
@@ -389,7 +366,8 @@ export async function getProjects(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -432,7 +410,8 @@ export async function getProject(id: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -479,7 +458,8 @@ export async function createProject(repoUrl: string): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -521,7 +501,8 @@ export async function deleteProject(id: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 

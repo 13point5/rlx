@@ -5,14 +5,7 @@ import Link from "next/link";
 import { GitHubIcon } from "@/components/icons";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface Project {
-  id: number;
-  repo_name: string;
-  repo_owner: string;
-  repo_owner_type: "user" | "organization";
-  active_runs: number;
-}
+import type { Project } from "@/lib/types";
 
 export function ProjectCard({ project }: { project: Project }) {
   const repoFullName = `${project.repo_owner}/${project.repo_name}`;
@@ -27,7 +20,11 @@ export function ProjectCard({ project }: { project: Project }) {
               alt={project.repo_owner}
               width={16}
               height={16}
-              className={project.repo_owner_type === "user" ? "rounded-full" : "rounded-sm"}
+              className={
+                project.repo_owner_type === "User"
+                  ? "rounded-full"
+                  : "rounded-sm"
+              }
             />
             <span>{project.repo_owner}</span>
           </div>
@@ -47,7 +44,8 @@ export function ProjectCard({ project }: { project: Project }) {
         <div>
           {project.active_runs > 0 ? (
             <span className="inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-500">
-              {project.active_runs} active run{project.active_runs > 1 ? "s" : ""}
+              {project.active_runs} active run
+              {project.active_runs > 1 ? "s" : ""}
             </span>
           ) : (
             <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">

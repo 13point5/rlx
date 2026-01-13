@@ -59,7 +59,7 @@ class Project(Base):
     repo_id = Column(Integer, nullable=False)  # GitHub repo ID (permanent unique identifier)
     repo_name = Column(String, nullable=False)  # repo name
     repo_owner = Column(String, nullable=False)  # repo owner
-    repo_owner_type = Column(String, nullable=False)  # "user" or "org"
+    repo_owner_type = Column(String, nullable=False)  # "User" or "Organization"
     repo_url = Column(String, nullable=False)  # Full GitHub URL
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(

@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { ChevronsUpDown, LogOut, Settings, Zap } from "lucide-react";
 
+import { GitHubAvatar } from "@/components/github-avatar";
+import type { BreadcrumbItem } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -16,22 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface BreadcrumbItem {
-  label: string;
-  href?: string;
-  icon?: {
-    src: string;
-    alt: string;
-    rounded?: "full" | "sm";
-  };
-  items?: {
-    label: string;
-    href: string;
-    active?: boolean;
-    icon?: { src: string; alt: string; rounded?: "full" | "sm" };
-  }[];
-}
 
 interface AppHeaderProps {
   breadcrumbs?: BreadcrumbItem[];
@@ -70,72 +55,120 @@ export function AppHeader({
           </div>
         ) : breadcrumbs.length > 0 ? (
           <nav className="flex items-center text-sm">
-            {breadcrumbs.map((crumb, index) => (
-              <div key={index} className="flex items-center">
-                <span className="mx-2 text-muted-foreground/50">/</span>
-                {crumb.items ? (
-                  <div className="flex items-center gap-1">
-                    {crumb.icon && (
-                      <Image
-                        src={crumb.icon.src}
-                        alt={crumb.icon.alt}
-                        width={16}
-                        height={16}
-                        className={
-                          crumb.icon.rounded === "full"
-                            ? "rounded-full"
-                            : "rounded-sm"
-                        }
-                      />
-                    )}
-                    <span className="font-medium">{crumb.label}</span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-6">
-                          <ChevronsUpDown className="size-3 text-muted-foreground" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        {crumb.items.map((item) => (
-                          <DropdownMenuItem key={item.href} asChild>
-                            <Link
-                              href={item.href}
-                              className={`flex items-center gap-2 ${
-                                item.active ? "font-medium" : ""
-                              }`}
-                            >
-                              {item.icon && (
-                                <Image
-                                  src={item.icon.src}
-                                  alt={item.icon.alt}
-                                  width={16}
-                                  height={16}
-                                  className={
-                                    item.icon.rounded === "full"
-                                      ? "rounded-full"
-                                      : "rounded-sm"
-                                  }
-                                />
-                              )}
-                              {item.label}
-                            </Link>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ) : crumb.href ? (
-                  <Link
-                    href={crumb.href}
-                    className="py-1 text-muted-foreground hover:text-foreground"
-                  >
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span className="py-1 font-medium">{crumb.label}</span>
-                )}
-              </div>
-            ))}
+            {breadcrumbs.map((crumb, index) => {
+              const isLast = index === breadcrumbs.length - 1;
+              return (
+                <div key={index} className="flex items-center">
+                  <span className="mx-2 text-muted-foreground/50">/</span>
+                  {crumb.items ? (
+                    <div className="flex items-center gap-2">
+                      {crumb.href ? (
+                        <Link
+                          href={crumb.href}
+                          className={`flex items-center gap-2 ${
+                            isLast
+                              ? "font-semibold text-foreground"
+                              : "font-medium hover:text-foreground"
+                          }`}
+                        >
+                          {crumb.icon && (
+                            <GitHubAvatar
+                              username={crumb.icon.alt}
+                              avatarUrl={crumb.icon.src}
+                              type={crumb.icon.type}
+                              size={16}
+                            />
+                          )}
+                          <span>{crumb.label}</span>
+                        </Link>
+                      ) : (
+                        <>
+                          {crumb.icon && (
+                            <GitHubAvatar
+                              username={crumb.icon.alt}
+                              avatarUrl={crumb.icon.src}
+                              type={crumb.icon.type}
+                              size={16}
+                            />
+                          )}
+                          <span
+                            className={
+                              isLast
+                                ? "font-semibold text-foreground"
+                                : "font-medium"
+                            }
+                          >
+                            {crumb.label}
+                          </span>
+                        </>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                          >
+                            <ChevronsUpDown className="size-3 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {crumb.items.map((item) => (
+                            <DropdownMenuItem key={item.href} asChild>
+                              <Link
+                                href={item.href}
+                                className={`flex items-center gap-2 ${
+                                  item.active ? "font-medium" : ""
+                                }`}
+                              >
+                                {item.icon && (
+                                  <GitHubAvatar
+                                    username={item.icon.alt}
+                                    avatarUrl={item.icon.src}
+                                    type={item.icon.type}
+                                    size={16}
+                                  />
+                                )}
+                                {item.label}
+                              </Link>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ) : crumb.href ? (
+                    <Link
+                      href={crumb.href}
+                      className={`flex items-center gap-2 ${
+                        isLast
+                          ? "py-1 font-semibold text-foreground"
+                          : "py-1 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {crumb.icon && (
+                        <GitHubAvatar
+                          username={crumb.icon.alt}
+                          avatarUrl={crumb.icon.src}
+                          type={crumb.icon.type}
+                          size={16}
+                        />
+                      )}
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span
+                      className={
+                        isLast
+                          ? "py-1 font-semibold text-foreground"
+                          : "py-1 font-medium"
+                      }
+                    >
+                      {crumb.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </nav>
         ) : null}
 

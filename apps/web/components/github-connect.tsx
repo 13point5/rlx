@@ -7,8 +7,8 @@ import {
   getGitHubStatus,
   getGitHubRepos,
   disconnectGitHub,
-  type GitHubRepo,
 } from "@/app/actions/api";
+import type { GitHubRepo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Card,
