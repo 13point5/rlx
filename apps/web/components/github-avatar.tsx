@@ -32,7 +32,7 @@ export function GitHubAvatar({
       height={size}
       className={cn(
         "shrink-0",
-        isOrg ? "rounded-md" : "rounded-full",
+        isOrg ? "rounded-sm" : "rounded-full",
         className
       )}
     />

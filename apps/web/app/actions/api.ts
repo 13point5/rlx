@@ -358,7 +358,10 @@ export async function getProjects(): Promise<{
       },
     });
 
-    return { success: true, projects: response.data.projects };
+    return {
+      success: true,
+      projects: response.data.projects,
+    };
   } catch (error) {
     console.error("Error getting projects:", error);
 

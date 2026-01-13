@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { GitHubAvatar } from "@/components/github-avatar";
 import type { Project } from "@/lib/types";
 
 interface Props {
@@ -16,14 +16,11 @@ export const ProjectHeading = ({ project }: Props) => {
         rel="noopener noreferrer"
         className="flex items-center gap-2 hover:opacity-80"
       >
-        <Image
-          src={`https://github.com/${project.repo_owner}.png`}
-          alt={project.repo_owner}
-          width={24}
-          height={24}
-          className={
-            project.repo_owner_type === "User" ? "rounded-full" : "rounded-sm"
-          }
+        <GitHubAvatar
+          username={project.repo_owner}
+          avatarUrl={`https://github.com/${project.repo_owner}.png`}
+          type={project.repo_owner_type}
+          size={24}
         />
         <h1 className="text-xl tracking-tight">
           <span className="text-muted-foreground">{project.repo_owner}</span>

@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import { GitHubAvatar } from "@/components/github-avatar";
 import { GitHubIcon } from "@/components/icons";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,16 +15,11 @@ export function ProjectCard({ project }: { project: Project }) {
       <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-foreground/20 hover:bg-muted/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Image
-              src={`https://github.com/${project.repo_owner}.png`}
-              alt={project.repo_owner}
-              width={16}
-              height={16}
-              className={
-                project.repo_owner_type === "User"
-                  ? "rounded-full"
-                  : "rounded-sm"
-              }
+            <GitHubAvatar
+              username={project.repo_owner}
+              avatarUrl={`https://github.com/${project.repo_owner}.png`}
+              type={project.repo_owner_type}
+              size={16}
             />
             <span>{project.repo_owner}</span>
           </div>
