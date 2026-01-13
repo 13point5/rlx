@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
@@ -16,7 +15,6 @@ import {
 } from "@/components/ui/table";
 import { getProject, getProjects } from "@/app/actions/api";
 import { SettingsTab } from "./tabs/settings";
-import { ProjectBreadcrumbs } from "./project-breadcrumbs";
 import { ProjectHeading } from "@/components/project-heading";
 
 // TODO: Replace with actual API call when runs API is implemented
@@ -77,101 +75,94 @@ export default async function ProjectPage({ params }: Props) {
   }
 
   const project = projectResult.project!;
-  const allProjects = projectsResult.projects ?? [];
 
   return (
-    <>
-      <ProjectBreadcrumbs currentProject={project} allProjects={allProjects} />
-      <div className="space-y-6">
-        <ProjectHeading project={project} />
+    <div className="space-y-6">
+      <ProjectHeading project={project} />
 
-        <Tabs defaultValue="runs" className="space-y-4">
-          <div className="flex items-center gap-4">
-            <TabsList>
-              <TabsTrigger value="runs">Runs</TabsTrigger>
-              <TabsTrigger value="configs">Configs</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-            </TabsList>
+      <Tabs defaultValue="runs" className="space-y-4">
+        <div className="flex items-center gap-4">
+          <TabsList>
+            <TabsTrigger value="runs">Runs</TabsTrigger>
+            <TabsTrigger value="configs">Configs</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+          </TabsList>
 
-            <Button asChild>
-              <Link href={`/projects/${id}/new-run`}>
-                <Plus className="size-4" />
-                New Run
-              </Link>
-            </Button>
-          </div>
+          <Button asChild>
+            <Link href={`/projects/${id}/new-run`}>
+              <Plus className="size-4" />
+              New Run
+            </Link>
+          </Button>
+        </div>
 
-          <TabsContent value="runs" className="space-y-4">
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Run</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>GPU</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockRuns.map((run) => (
-                    <TableRow key={run.id} className="cursor-pointer">
-                      <TableCell>
-                        <Link href={`/projects/${id}/runs/${run.id}`}>
-                          <div className="font-medium hover:underline">
-                            {run.name}
-                          </div>
-                          <div className="text-muted-foreground text-xs">
-                            {run.config}
-                          </div>
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <GitBranch className="size-3" />
-                          <span className="max-w-[120px] truncate">
-                            {run.branch}
-                          </span>
+        <TabsContent value="runs" className="space-y-4">
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Run</TableHead>
+                  <TableHead>Branch</TableHead>
+                  <TableHead>GPU</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockRuns.map((run) => (
+                  <TableRow key={run.id} className="cursor-pointer">
+                    <TableCell>
+                      <Link href={`/projects/${id}/runs/${run.id}`}>
+                        <div className="font-medium hover:underline">
+                          {run.name}
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {run.gpu}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={run.status} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {run.createdAt}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
+                        <div className="text-muted-foreground text-xs">
+                          {run.config}
+                        </div>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <GitBranch className="size-3" />
+                        <span className="max-w-[120px] truncate">
+                          {run.branch}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {run.gpu}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={run.status} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {run.createdAt}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
 
-          <TabsContent value="configs">
-            <Card>
-              <CardHeader>
-                <CardTitle>Config Files</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Config files from your repository will appear here.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
+        <TabsContent value="configs">
+          <Card>
+            <CardHeader>
+              <CardTitle>Config Files</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">
+                Config files from your repository will appear here.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-          <TabsContent value="settings">
-            <SettingsTab
-              projectId={project.id}
-              projectName={project.repo_name}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </>
+        <TabsContent value="settings">
+          <SettingsTab projectId={project.id} projectName={project.repo_name} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 

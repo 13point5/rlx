@@ -15,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface BreadcrumbItem {
@@ -39,13 +38,17 @@ interface AppHeaderProps {
   isLoading?: boolean;
 }
 
-export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProps) {
+export function AppHeader({
+  breadcrumbs = [],
+  isLoading = false,
+}: AppHeaderProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
 
-  const initials = user?.firstName && user?.lastName
-    ? `${user.firstName[0]}${user.lastName[0]}`
-    : user?.emailAddresses[0]?.emailAddress?.[0]?.toUpperCase() ?? "U";
+  const initials =
+    user?.firstName && user?.lastName
+      ? `${user.firstName[0]}${user.lastName[0]}`
+      : user?.emailAddresses[0]?.emailAddress?.[0]?.toUpperCase() ?? "U";
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
@@ -59,7 +62,7 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
         {/* Breadcrumbs */}
         {isLoading ? (
           <div className="flex items-center text-sm">
-            <span className="mx-3 text-muted-foreground/50">/</span>
+            <span className="mx-2 text-muted-foreground/50">/</span>
             <div className="flex items-center gap-2">
               <Skeleton className="size-4 rounded-sm" />
               <Skeleton className="h-4 w-24" />
@@ -69,7 +72,7 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
           <nav className="flex items-center text-sm">
             {breadcrumbs.map((crumb, index) => (
               <div key={index} className="flex items-center">
-                <span className="mx-3 text-muted-foreground/50">/</span>
+                <span className="mx-2 text-muted-foreground/50">/</span>
                 {crumb.items ? (
                   <div className="flex items-center gap-1">
                     {crumb.icon && (
@@ -78,17 +81,17 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
                         alt={crumb.icon.alt}
                         width={16}
                         height={16}
-                        className={crumb.icon.rounded === "full" ? "rounded-full" : "rounded-sm"}
+                        className={
+                          crumb.icon.rounded === "full"
+                            ? "rounded-full"
+                            : "rounded-sm"
+                        }
                       />
                     )}
                     <span className="font-medium">{crumb.label}</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                        >
+                        <Button variant="ghost" size="icon" className="size-6">
                           <ChevronsUpDown className="size-3 text-muted-foreground" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -97,7 +100,9 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
                           <DropdownMenuItem key={item.href} asChild>
                             <Link
                               href={item.href}
-                              className={`flex items-center gap-2 ${item.active ? "font-medium" : ""}`}
+                              className={`flex items-center gap-2 ${
+                                item.active ? "font-medium" : ""
+                              }`}
                             >
                               {item.icon && (
                                 <Image
@@ -105,7 +110,11 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
                                   alt={item.icon.alt}
                                   width={16}
                                   height={16}
-                                  className={item.icon.rounded === "full" ? "rounded-full" : "rounded-sm"}
+                                  className={
+                                    item.icon.rounded === "full"
+                                      ? "rounded-full"
+                                      : "rounded-sm"
+                                  }
                                 />
                               )}
                               {item.label}
@@ -118,12 +127,12 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
                 ) : crumb.href ? (
                   <Link
                     href={crumb.href}
-                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                    className="py-1 text-muted-foreground hover:text-foreground"
                   >
                     {crumb.label}
                   </Link>
                 ) : (
-                  <span className="px-2 py-1 font-medium">{crumb.label}</span>
+                  <span className="py-1 font-medium">{crumb.label}</span>
                 )}
               </div>
             ))}
@@ -135,10 +144,19 @@ export function AppHeader({ breadcrumbs = [], isLoading = false }: AppHeaderProp
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8 rounded-full">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full"
+                >
                   <Avatar className="size-7">
-                    <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    <AvatarImage
+                      src={user.imageUrl}
+                      alt={user.fullName ?? ""}
+                    />
+                    <AvatarFallback className="text-xs">
+                      {initials}
+                    </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>

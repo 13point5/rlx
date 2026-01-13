@@ -10,10 +10,21 @@ import {
   type GitHubRepo,
 } from "@/app/actions/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type ConnectionState = "loading" | "disconnected" | "connecting" | "connected" | "error";
+type ConnectionState =
+  | "loading"
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 export function GitHubConnect() {
   const router = useRouter();
@@ -66,9 +77,12 @@ export function GitHubConnect() {
     setIsLoadingRepos(true);
     const result = await getGitHubRepos();
 
-    if (result.success && result.repos) {
-      setRepos(result.repos);
-    } else if (result.error?.includes("expired") || result.error?.includes("401")) {
+    if (result.success && result.data?.repos) {
+      setRepos(result.data.repos);
+    } else if (
+      result.error?.includes("expired") ||
+      result.error?.includes("401")
+    ) {
       setState("disconnected");
       setError("Your GitHub connection has expired. Please reconnect.");
     }
@@ -206,7 +220,8 @@ export function GitHubConnect() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Connected as <span className="font-medium text-foreground">@{username}</span>
+          Connected as{" "}
+          <span className="font-medium text-foreground">@{username}</span>
         </p>
 
         <div className="space-y-2">
@@ -230,7 +245,9 @@ export function GitHubConnect() {
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{repo.name}</span>
                       {repo.private && (
-                        <span className="text-xs text-muted-foreground">Private</span>
+                        <span className="text-xs text-muted-foreground">
+                          Private
+                        </span>
                       )}
                     </div>
                     {repo.description && (
@@ -247,7 +264,9 @@ export function GitHubConnect() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No repositories found.</p>
+            <p className="text-sm text-muted-foreground">
+              No repositories found.
+            </p>
           )}
         </div>
       </CardContent>
