@@ -46,6 +46,86 @@ async def fetch_gpu_summary() -> Dict[str, Any]:
     return _handle_response(response)
 
 
+async def create_pod(pod_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Create a new pod instance.
+
+    Args:
+        pod_config: Dictionary containing pod configuration
+            Required fields:
+            - pod.name: Name of the pod
+            - pod.cloudId: Cloud ID from availability data
+            - pod.gpuType: GPU type (e.g., "H100_80GB")
+            - pod.socket: Socket type (e.g., "PCIe")
+            - pod.gpuCount: Number of GPUs
+            - pod.image: Image to use (e.g., "ubuntu_22_cuda_12")
+            - pod.dataCenterId: Data center ID
+            - pod.country: Country code
+            - pod.security: "secure_cloud" or "community_cloud"
+            - provider.type: Provider type (e.g., "hyperstack")
+
+    Returns:
+        Dictionary with pod creation response
+    """
+    headers = await _get_headers()
+    headers["Content-Type"] = "application/json"
+    url = f"{BASE_URL}/api/v1/pods/"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, headers=headers, json=pod_config)
+
+    return _handle_response(response)
+
+
+async def get_pod_status(pod_id: str) -> Dict[str, Any]:
+    """
+    Get the status of a pod.
+
+    Args:
+        pod_id: The ID of the pod to check
+
+    Returns:
+        Dictionary with pod status information including:
+        - status: PROVISIONING, PENDING, ACTIVE, STOPPED, ERROR, DELETING, TERMINATED
+        - sshConnection: SSH connection string (when active)
+        - ip: IP address (when active)
+        - costPerHr: Cost per hour
+        - installationProgress: Installation progress (0-100)
+        - installationFailure: Error message if failed
+    """
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/status/"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.get(url, headers=headers, params={"pod_ids": pod_id})
+
+    data = _handle_response(response)
+    # The status endpoint returns a single object for one pod_id
+    return data
+
+
+async def get_pod(pod_id: str) -> Dict[str, Any]:
+    """Get detailed information about a specific pod."""
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/{pod_id}"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.get(url, headers=headers)
+
+    return _handle_response(response)
+
+
+async def delete_pod(pod_id: str) -> Dict[str, Any]:
+    """Delete a pod."""
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/{pod_id}"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.delete(url, headers=headers)
+
+    return _handle_response(response)
+
+
 def _handle_response(response: httpx.Response) -> Dict[str, Any]:
     if response.status_code >= 400:
         try:
