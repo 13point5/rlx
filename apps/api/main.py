@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import github, health, projects
+from routers import compute, github, health, projects
 
 load_dotenv()
 
@@ -19,6 +19,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router)
+app.include_router(compute.router)
 app.include_router(github.router)
 app.include_router(projects.router)
 
