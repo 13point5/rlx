@@ -4,10 +4,7 @@ import {
   QueryClient,
   dehydrate,
 } from "@tanstack/react-query";
-import {
-  getGpuSummary,
-  getProject,
-} from "@/app/actions/api";
+import { getGpuSummary, getProject } from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
 import { GpuSelection } from "@/components/gpu-selection";
 import { GpuAvailability } from "@/components/gpu-availability";
@@ -68,7 +65,9 @@ export default async function NewRunPage({ params, searchParams }: Props) {
       )[0]?.[0];
 
       if (firstGpuType && firstCountKey) {
-        redirect(`/projects/${id}/runs/new?gpu=${firstGpuType}&count=${firstCountKey}`);
+        redirect(
+          `/projects/${id}/runs/new?gpu=${firstGpuType}&count=${firstCountKey}`
+        );
       }
     }
   }
@@ -90,15 +89,10 @@ export default async function NewRunPage({ params, searchParams }: Props) {
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold">New Run</h1>
-          <p className="text-muted-foreground">
-            Start a new training run for {project.repo_name}
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold">New Run</h1>
 
         <div className="flex flex-col gap-4 lg:flex-row w-full">
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="overflow-y-auto">
             {summaryResult.success && summaryResult.data ? (
               <GpuSelection summary={summaryResult.data} />
             ) : (
@@ -113,105 +107,6 @@ export default async function NewRunPage({ params, searchParams }: Props) {
             <GpuAvailability />
           </div>
         </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="size-5" />
-              Run Configuration
-            </CardTitle>
-            <CardDescription>
-              Configure your training run settings
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="run-name">Run Name</Label>
-              <Input id="run-name" placeholder="Training Run #1" />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="branch">Branch</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="main">main</SelectItem>
-                  <SelectItem value="develop">develop</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="config">Config File</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select config" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ppo.yaml">ppo.yaml</SelectItem>
-                  <SelectItem value="dpo.yaml">dpo.yaml</SelectItem>
-                  <SelectItem value="sft.yaml">sft.yaml</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="gpu">GPU Type</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select GPU" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="h100">H100</SelectItem>
-                  <SelectItem value="a100">A100</SelectItem>
-                  <SelectItem value="v100">V100</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="size-5" />
-              Advanced Settings
-            </CardTitle>
-            <CardDescription>Additional configuration options</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Optional description for this run..."
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="max-steps">Maximum Steps</Label>
-              <Input id="max-steps" type="number" placeholder="10000" />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="seed">Random Seed</Label>
-              <Input id="seed" type="number" placeholder="42" />
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button className="flex-1">
-                <Zap className="w-4 h-4 mr-2" />
-                Start Run
-              </Button>
-              <Button variant="outline">Save as Draft</Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
       </div>
     </HydrationBoundary>
   );

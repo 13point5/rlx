@@ -56,8 +56,8 @@ function GpuSummaryCard({
   return (
     <Card
       className={cn(
-        "p-2 gap-3 rounded-sm w-full cursor-pointer transition-colors hover:bg-accent/50",
-        isSelected && "border-2 border-primary"
+        "p-3 gap-3 rounded-sm w-full cursor-pointer transition-colors hover:bg-accent/50",
+        isSelected && "border-primary"
       )}
       onClick={onClick}
     >
@@ -65,14 +65,11 @@ function GpuSummaryCard({
         <CardTitle className="text-lg font-semibold">{displayName}</CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {countEntries.length > 1 && (
-            <Select
-              value={selectedCount}
-              onValueChange={(val) => {
-                onSelectCount(val);
-                onClick();
-              }}
-            >
-              <SelectTrigger className="w-20" onClick={(e) => e.stopPropagation()}>
+            <Select value={selectedCount} onValueChange={onSelectCount}>
+              <SelectTrigger
+                className="w-20"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <SelectValue placeholder="Count" />
               </SelectTrigger>
               <SelectContent>
@@ -119,7 +116,9 @@ export function GpuSelection({ summary }: Props) {
   const firstGpuType = entries[0]?.[0];
   const firstGpuCounts = entries[0]?.[1] as Record<string, unknown>;
   const firstCountKey = firstGpuCounts
-    ? Object.entries(firstGpuCounts).filter(([, v]) => typeof v === "object")[0]?.[0]
+    ? Object.entries(firstGpuCounts).filter(
+        ([, v]) => typeof v === "object"
+      )[0]?.[0]
     : undefined;
 
   // Read from URL or use defaults
