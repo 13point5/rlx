@@ -2,7 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
-import type { GitHubOwner, GitHubRepo, Project } from "@/lib/types";
+import type { GitHubOwner, GitHubRepo, GpuSummaryData, Project } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -333,6 +333,111 @@ export async function disconnectGitHub(): Promise<{
 // =============================================================================
 // Project Actions
 // =============================================================================
+
+export async function getGpuAvailability(params?: {
+  page?: number;
+  page_size?: number;
+  regions?: string[];
+  gpu_type?: string;
+  socket?: string;
+  security?: string;
+}): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.page_size) searchParams.set("page_size", params.page_size.toString());
+    if (params?.gpu_type) searchParams.set("gpu_type", params.gpu_type);
+    if (params?.socket) searchParams.set("socket", params.socket);
+    if (params?.security) searchParams.set("security", params.security);
+    params?.regions?.forEach((region) => searchParams.append("regions", region));
+
+    const url = `${API_BASE_URL}/api/compute/availability/gpus${
+      searchParams.toString() ? `?${searchParams.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error("Error getting GPU availability:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getGpuSummary(): Promise<{
+  success: boolean;
+  data?: GpuSummaryData;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/compute/availability/gpu-summary`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error("Error getting GPU summary:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
 
 export async function getProjects(): Promise<{
   success: boolean;

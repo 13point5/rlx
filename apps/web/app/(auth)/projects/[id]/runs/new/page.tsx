@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getProject } from "@/app/actions/api";
+import { getGpuAvailability, getGpuSummary, getProject } from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
 import {
   Card,
@@ -28,6 +28,11 @@ interface Props {
 export default async function NewRunPage({ params }: Props) {
   const { id } = await params;
   const projectResult = await getProject(Number(id));
+  const availabilityResult = await getGpuAvailability({ page: 1, page_size: 5 });
+  const summaryResult = await getGpuSummary();
+
+  console.log("GPU availability", availabilityResult);
+  console.log("GPU summary", summaryResult);
 
   if (!projectResult.success) {
     if (projectResult.error?.toLowerCase().includes("not found")) {
