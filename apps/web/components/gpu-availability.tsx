@@ -3,32 +3,82 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { getGpuAvailability } from "@/app/actions/api";
-import { Card } from "@/components/ui/card";
-import { ShieldCheckIcon, ZapIcon, ServerIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ShieldCheckIcon, ServerIcon, HardDrive, MemoryStick, Clock, MapPin } from "lucide-react";
+
+// Match the actual Prime Intellect API response format
+interface GpuInstancePrices {
+  currency: string;
+  onDemand: number | null;
+  communityPrice: number | null;
+  isVariable: boolean;
+}
 
 interface GpuInstance {
-  gpu_name: string;
-  num_gpus: number;
-  total_gpus: number;
-  gpu_memory_gb: number;
-  cpu_cores_effective: number;
-  memory_gb: number;
-  storage_gb: number;
-  spot_price: number | null;
-  on_demand_price: number | null;
-  datacenter: {
-    name: string;
-    location: string;
+  cloudId: string;
+  gpuType: string;
+  socket: string;
+  provider: string;
+  gpuCount: number;
+  gpuMemory: number;
+  security: string;
+  prices: GpuInstancePrices;
+  images: string[];
+  region: string;
+  dataCenter: string;
+  country: string;
+  stockStatus: string;
+  vcpu?: { defaultCount: number };
+  memory?: { defaultCount: number };
+  disk?: {
+    minCount: number;
+    defaultCount: number;
+    maxCount: number;
+    pricePerUnit: number;
   };
-  security_level: string;
-  availability: string;
+  isSpot?: boolean;
 }
 
 interface AvailabilityResponse {
-  instances: GpuInstance[];
-  total: number;
-  page: number;
-  page_size: number;
+  items: GpuInstance[];
+  totalCount: number;
+}
+
+function formatGpuName(gpuType: string, gpuMemory: number): string {
+  // Convert "H100_80GB" to "H100 80GB"
+  return gpuType.replace(/_/g, " ");
+}
+
+function getProviderDisplayName(provider: string): string {
+  const providerNames: Record<string, string> = {
+    runpod: "RunPod",
+    fluidstack: "FluidStack",
+    hyperstack: "Hyperstack",
+    datacrunch: "DataCrunch",
+    lambdalabs: "Lambda Labs",
+    tensordock: "TensorDock",
+    primecompute: "Prime Compute",
+    nebius: "Nebius",
+    vultr: "Vultr",
+  };
+  return providerNames[provider.toLowerCase()] || provider;
+}
+
+function getLocationFromRegion(region: string, country: string): string {
+  const regionNames: Record<string, string> = {
+    united_states: "United States",
+    canada: "Canada",
+    eu_west: "Western Europe",
+    eu_east: "Eastern Europe",
+    eu_north: "Northern Europe",
+    asia_south: "South Asia",
+    asia_northeast: "Northeast Asia",
+    australia: "Australia",
+    south_america: "South America",
+    middle_east: "Middle East",
+    africa: "Africa",
+  };
+  return regionNames[region] || country || region;
 }
 
 export function GpuAvailability() {
@@ -43,11 +93,11 @@ export function GpuAvailability() {
         return null;
       }
 
-      // Parse GPU type and count for API
       const result = await getGpuAvailability({
         gpu_type: selectedGpu,
+        gpu_count: parseInt(selectedCount, 10),
         page: 1,
-        page_size: 10,
+        page_size: 20,
       });
 
       if (!result.success) {
@@ -57,14 +107,14 @@ export function GpuAvailability() {
       return result.data as AvailabilityResponse;
     },
     enabled: !!selectedGpu && !!selectedCount,
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 30 * 1000,
   });
 
   if (!selectedGpu || !selectedCount) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">GPU Instances</h2>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Available Instances</h2>
         </div>
         <p className="text-sm text-muted-foreground">
           Select a GPU configuration on the left to view available instances and
@@ -76,15 +126,15 @@ export function GpuAvailability() {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">GPU Instances</h2>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Available Instances</h2>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
             <div
               key={i}
-              className="h-32 rounded-md bg-muted/50 animate-pulse"
+              className="h-40 rounded-md border border-border animate-pulse"
             />
           ))}
         </div>
@@ -94,9 +144,9 @@ export function GpuAvailability() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">GPU Instances</h2>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Available Instances</h2>
         </div>
         <p className="text-sm text-destructive">
           Error loading instances: {(error as Error).message}
@@ -105,15 +155,15 @@ export function GpuAvailability() {
     );
   }
 
-  const instances = data?.instances || [];
+  const instances = data?.items || [];
   const displayName = selectedGpu.replace(/_/g, " ");
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">GPU Instances</h2>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Available Instances</h2>
         <span className="text-sm text-muted-foreground">
-          {instances.length} available
+          {data?.totalCount || instances.length} available
         </span>
       </div>
 
@@ -124,85 +174,83 @@ export function GpuAvailability() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3 max-h-[calc(60vh-80px)] overflow-y-auto pr-1">
-          {instances.map((instance, idx) => (
-            <Card key={idx} className="p-4 hover:bg-accent/50 transition-colors">
-              <div className="space-y-3">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-base">
-                      {instance.gpu_name} x {instance.num_gpus}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {instance.datacenter.name} • {instance.datacenter.location}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-1.5">
-                      <ZapIcon className="size-3.5 text-amber-400" />
-                      <span className="text-sm font-mono">
-                        {instance.spot_price !== null
-                          ? `$${instance.spot_price.toFixed(2)}`
-                          : "N/A"}
-                      </span>
-                      <span className="text-xs text-muted-foreground">usd/hr</span>
-                    </div>
-                  </div>
-                </div>
+        <div className="space-y-4 max-h-[calc(70vh-100px)] overflow-y-auto pr-1">
+          {instances.map((instance, idx) => {
+            const isSpot = instance.isSpot || instance.prices.communityPrice !== null;
+            const price = isSpot
+              ? instance.prices.communityPrice
+              : instance.prices.onDemand;
 
-                {/* Specs */}
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div className="flex items-center gap-1.5">
-                    <ServerIcon className="size-3.5 text-muted-foreground" />
-                    <span className="text-muted-foreground">CPU</span>
-                    <span className="font-medium">{instance.cpu_cores_effective}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">Memory</span>
-                    <span className="font-medium">{instance.memory_gb} GB</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">Disk</span>
-                    <span className="font-medium">{instance.storage_gb} GB</span>
-                  </div>
-                </div>
-
-                {/* Pricing and Security */}
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
-                      {instance.security_level.toLowerCase().includes("secure") ? (
-                        <>
-                          <ShieldCheckIcon className="size-3.5 text-sky-400" />
-                          <span className="text-xs text-sky-400 uppercase font-medium">
-                            Secure Cloud
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <ZapIcon className="size-3.5 text-amber-400" />
-                          <span className="text-xs text-amber-400 uppercase font-medium">
-                            Spot
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {instance.on_demand_price !== null && (
-                      <div className="flex items-center gap-1.5">
-                        <ShieldCheckIcon className="size-3.5 text-sky-400" />
-                        <span className="text-xs font-mono">
-                          ${instance.on_demand_price.toFixed(2)}/hr
-                        </span>
+            return (
+              <div key={idx} className="p-4 border border-border rounded-md bg-card hover:bg-accent/50 transition-colors cursor-pointer">
+                <div className="space-y-4">
+                  {/* Header with GPU name and price */}
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-lg">
+                        {formatGpuName(instance.gpuType, instance.gpuMemory)} x {instance.gpuCount}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline" className="bg-muted/50 border-muted-foreground/30">
+                          {instance.socket}
+                        </Badge>
+                        <Badge variant="outline" className="bg-sky-500/10 text-sky-400 border-sky-500/30">
+                          <ShieldCheckIcon className="size-3 mr-1" />
+                          {instance.security.toUpperCase().replace("_", " ")}
+                        </Badge>
                       </div>
-                    )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">
+                        Powered by <span className="font-medium text-foreground">DC {getProviderDisplayName(instance.provider)}</span>
+                      </p>
+                      <p className="text-2xl font-bold mt-1">
+                        ${price?.toFixed(2) || "N/A"}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">usd/hr</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Specs Grid */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <ServerIcon className="size-4" />
+                        <span className="text-sm">CPU</span>
+                      </div>
+                      <p className="font-medium pl-6">{instance.vcpu?.defaultCount || 'N/A'} <span className="text-muted-foreground text-sm">CPU</span></p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <MemoryStick className="size-4" />
+                        <span className="text-sm">Memory</span>
+                      </div>
+                      <p className="font-medium pl-6">{instance.memory?.defaultCount || 'N/A'} <span className="text-muted-foreground text-sm">GB</span></p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <HardDrive className="size-4" />
+                        <span className="text-sm">Disk size</span>
+                      </div>
+                      <p className="font-medium pl-6">{instance.disk?.defaultCount || 'N/A'} <span className="text-muted-foreground text-sm">GB</span></p>
+                    </div>
+                  </div>
+
+                  {/* Footer info */}
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="size-3.5" />
+                      <span>~2 min spin up</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-3.5" />
+                      <span>{instance.dataCenter || getLocationFromRegion(instance.region, instance.country)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

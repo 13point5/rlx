@@ -339,6 +339,7 @@ export async function getGpuAvailability(params?: {
   page_size?: number;
   regions?: string[];
   gpu_type?: string;
+  gpu_count?: number;
   socket?: string;
   security?: string;
 }): Promise<{
@@ -363,6 +364,7 @@ export async function getGpuAvailability(params?: {
     if (params?.page) searchParams.set("page", params.page.toString());
     if (params?.page_size) searchParams.set("page_size", params.page_size.toString());
     if (params?.gpu_type) searchParams.set("gpu_type", params.gpu_type);
+    if (params?.gpu_count) searchParams.set("gpu_count", params.gpu_count.toString());
     if (params?.socket) searchParams.set("socket", params.socket);
     if (params?.security) searchParams.set("security", params.security);
     params?.regions?.forEach((region) => searchParams.append("regions", region));
