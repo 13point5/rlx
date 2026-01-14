@@ -1,11 +1,16 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
-  getGpuAvailability,
+  HydrationBoundary,
+  QueryClient,
+  dehydrate,
+} from "@tanstack/react-query";
+import {
   getGpuSummary,
   getProject,
 } from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
-import { GpuSummaryCards } from "@/components/gpu-summary-cards";
+import { GpuSelection } from "@/components/gpu-selection";
+import { GpuAvailability } from "@/components/gpu-availability";
 import {
   Card,
   CardContent,
@@ -28,19 +33,15 @@ import { Settings, Zap } from "lucide-react";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function NewRunPage({ params }: Props) {
+export default async function NewRunPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const projectResult = await getProject(Number(id));
-  const availabilityResult = await getGpuAvailability({
-    page: 1,
-    page_size: 5,
-  });
-  const summaryResult = await getGpuSummary();
+  const search = await searchParams;
 
-  console.log("GPU availability", availabilityResult);
-  console.log("GPU summary", summaryResult);
+  const projectResult = await getProject(Number(id));
+  const summaryResult = await getGpuSummary();
 
   if (!projectResult.success) {
     if (projectResult.error?.toLowerCase().includes("not found")) {
@@ -56,41 +57,62 @@ export default async function NewRunPage({ params }: Props) {
 
   const project = projectResult.project!;
 
+  // If GPU summary is available and no GPU is selected, redirect to first GPU
+  if (summaryResult.success && summaryResult.data && !search.gpu) {
+    const entries = Object.entries(summaryResult.data);
+    if (entries.length > 0) {
+      const firstGpuType = entries[0][0];
+      const firstGpuCounts = entries[0][1] as Record<string, unknown>;
+      const firstCountKey = Object.entries(firstGpuCounts).filter(
+        ([, v]) => typeof v === "object"
+      )[0]?.[0];
+
+      if (firstGpuType && firstCountKey) {
+        redirect(`/projects/${id}/runs/new?gpu=${firstGpuType}&count=${firstCountKey}`);
+      }
+    }
+  }
+
+  const queryClient = new QueryClient();
+
+  // Prefetch GPU summary for client-side rendering
+  await queryClient.prefetchQuery({
+    queryKey: ["gpu-summary"],
+    queryFn: async () => {
+      const result = await getGpuSummary();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to fetch GPU summary");
+      }
+      return result.data;
+    },
+  });
+
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold">New Run</h1>
-        <p className="text-muted-foreground">
-          Start a new training run for {project.repo_name}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 lg:flex-row w-full">
-        <div className="max-h-[70vh] overflow-y-auto">
-          {summaryResult.success && summaryResult.data ? (
-            <GpuSummaryCards summary={summaryResult.data} />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Unable to load GPU summary:{" "}
-              {summaryResult.error || "unknown error"}
-            </p>
-          )}
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card p-4 flex-1">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">GPU Instances</h2>
-            <span className="text-xs text-muted-foreground">Coming soon</span>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Select a GPU summary on the left to view available instances and
-            pricing details here.
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold">New Run</h1>
+          <p className="text-muted-foreground">
+            Start a new training run for {project.repo_name}
           </p>
-          <div className="mt-4 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-            Instance list placeholder
+        </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row w-full">
+          <div className="max-h-[70vh] overflow-y-auto">
+            {summaryResult.success && summaryResult.data ? (
+              <GpuSelection summary={summaryResult.data} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Unable to load GPU summary:{" "}
+                {summaryResult.error || "unknown error"}
+              </p>
+            )}
+          </div>
+
+          <div className="flex-1">
+            <GpuAvailability />
           </div>
         </div>
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -190,6 +212,7 @@ export default async function NewRunPage({ params }: Props) {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </HydrationBoundary>
   );
 }
