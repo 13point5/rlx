@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
-import { getGpuAvailability, getGpuSummary, getProject } from "@/app/actions/api";
+import {
+  getGpuAvailability,
+  getGpuSummary,
+  getProject,
+} from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
+import { GpuSummaryCards } from "@/components/gpu-summary-cards";
 import {
   Card,
   CardContent,
@@ -28,7 +33,10 @@ interface Props {
 export default async function NewRunPage({ params }: Props) {
   const { id } = await params;
   const projectResult = await getProject(Number(id));
-  const availabilityResult = await getGpuAvailability({ page: 1, page_size: 5 });
+  const availabilityResult = await getGpuAvailability({
+    page: 1,
+    page_size: 5,
+  });
   const summaryResult = await getGpuSummary();
 
   console.log("GPU availability", availabilityResult);
@@ -55,6 +63,33 @@ export default async function NewRunPage({ params }: Props) {
         <p className="text-muted-foreground">
           Start a new training run for {project.repo_name}
         </p>
+      </div>
+
+      <div className="flex flex-col gap-4 lg:flex-row w-full">
+        <div className="max-h-[70vh] overflow-y-auto">
+          {summaryResult.success && summaryResult.data ? (
+            <GpuSummaryCards summary={summaryResult.data} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Unable to load GPU summary:{" "}
+              {summaryResult.error || "unknown error"}
+            </p>
+          )}
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card p-4 flex-1">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">GPU Instances</h2>
+            <span className="text-xs text-muted-foreground">Coming soon</span>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Select a GPU summary on the left to view available instances and
+            pricing details here.
+          </p>
+          <div className="mt-4 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+            Instance list placeholder
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
