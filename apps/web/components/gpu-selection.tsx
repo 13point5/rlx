@@ -62,7 +62,7 @@ function GpuSummaryCard({
       onClick={onClick}
     >
       <CardHeader className="flex flex-row items-center justify-between gap-4 px-0">
-        <CardTitle className="text-lg font-semibold">{displayName}</CardTitle>
+        <CardTitle className="text-md font-semibold">{displayName}</CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {countEntries.length > 1 && (
             <Select value={selectedCount} onValueChange={onSelectCount}>
@@ -83,9 +83,9 @@ function GpuSummaryCard({
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex items-center justify-between gap-6 px-0">
+      <CardContent className="flex items-center justify-between gap-6 px-0 text-sm">
         <div className="flex items-center gap-2">
-          <ZapIcon className="size-4 text-amber-400" />
+          <ZapIcon className="size-3 text-amber-400" />
           <span className="text-amber-400">Spot</span>
           <span>
             {cheapest?.spotPrice !== null && cheapest?.spotPrice !== undefined
@@ -94,7 +94,7 @@ function GpuSummaryCard({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <ShieldCheckIcon className="size-4 text-sky-400" />
+          <ShieldCheckIcon className="size-3 text-sky-400" />
           <span className="text-sky-400">Secure</span>
           <span>
             {cheapest?.onDemand !== null && cheapest?.onDemand !== undefined
