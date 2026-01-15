@@ -64,3 +64,42 @@ export interface BreadcrumbItem {
    }[];
 }
 
+// GPU Availability Types
+export interface GpuInstancePrices {
+  currency: string;
+  onDemand: number | null;
+  communityPrice: number | null;
+  isVariable: boolean;
+}
+
+export interface GpuInstance {
+  cloudId: string;
+  gpuType: string;
+  socket: string;
+  provider: string;
+  gpuCount: number;
+  gpuMemory: number;
+  security: string;
+  prices: GpuInstancePrices;
+  images: string[];
+  region: string;
+  dataCenter: string;
+  country: string;
+  stockStatus: string;
+  provisioningTime?: number | null;
+  vcpu?: { defaultCount: number };
+  memory?: { defaultCount: number };
+  disk?: {
+    minCount: number;
+    defaultCount: number;
+    maxCount: number;
+    pricePerUnit: number;
+  };
+  isSpot?: boolean;
+}
+
+export interface GpuAvailabilityResponse {
+  items: GpuInstance[];
+  totalCount: number;
+}
+
