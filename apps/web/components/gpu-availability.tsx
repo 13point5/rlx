@@ -1,14 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { getGpuAvailability } from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   ShieldCheckIcon,
   ServerIcon,
   HardDrive,
   Database,
   ZapIcon,
+  Loader2,
 } from "lucide-react";
 
 // Match the actual Prime Intellect API response format
@@ -92,18 +94,20 @@ interface GpuAvailabilityProps {
 }
 
 export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
-  const { data, isLoading, error } = useQuery({
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["gpu-availability", gpu, count],
-    queryFn: async () => {
-      if (!gpu || !count) {
-        return null;
-      }
-
+    queryFn: async ({ pageParam }) => {
       const result = await getGpuAvailability({
-        gpu_type: gpu,
-        gpu_count: parseInt(count, 10),
-        page: 1,
-        page_size: 20,
+        gpu_type: gpu!,
+        gpu_count: parseInt(count!, 10),
+        page: pageParam,
       });
 
       if (!result.success) {
@@ -111,6 +115,14 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
       }
 
       return result.data as AvailabilityResponse;
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce((sum, page) => sum + page.items.length, 0);
+      if (loadedCount < lastPage.totalCount) {
+        return allPages.length + 1;
+      }
+      return undefined;
     },
     enabled: !!gpu && !!count,
   });
@@ -160,19 +172,22 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
     );
   }
 
-  const instances = [...(data?.items || [])].sort((a, b) => {
+  // Flatten all pages into a single sorted array
+  const allItems = data?.pages.flatMap((page) => page.items) || [];
+  const instances = [...allItems].sort((a, b) => {
     const priceA = a.prices.onDemand ?? a.prices.communityPrice ?? Infinity;
     const priceB = b.prices.onDemand ?? b.prices.communityPrice ?? Infinity;
     return priceA - priceB;
   });
   const displayName = gpu.replace(/_/g, " ");
+  const totalCount = data?.pages[0]?.totalCount || 0;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Available Instances</h2>
         <span className="text-sm text-muted-foreground">
-          {data?.totalCount || instances.length} available
+          {hasNextPage ? `${instances.length} of ${totalCount}` : totalCount} available
         </span>
       </div>
 
@@ -290,6 +305,25 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {hasNextPage && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              `Load more (${totalCount - instances.length} remaining)`
+            )}
+          </Button>
         </div>
       )}
     </div>
