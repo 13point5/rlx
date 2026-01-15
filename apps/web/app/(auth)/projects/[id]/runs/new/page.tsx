@@ -17,7 +17,7 @@ export default async function NewRunPage({ searchParams }: NewRunPageProps) {
   return (
     <HydrationBoundary state={state}>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <PageHeading>New Run</PageHeading>
           <RunFields className="lg:w-auto" />
         </div>

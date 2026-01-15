@@ -94,7 +94,7 @@ export function GpuAvailabilitySkeleton() {
 export default function NewRunLoading() {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <PageHeading>New Run</PageHeading>
         <div className="grid w-full gap-4 sm:grid-cols-3 lg:w-auto">
           <div className="space-y-2 min-w-[180px]">
