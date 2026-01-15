@@ -1,3 +1,4 @@
+import { PageHeading } from "@/components/page-heading";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function GpuCardSkeleton() {
@@ -93,7 +94,23 @@ export function GpuAvailabilitySkeleton() {
 export default function NewRunLoading() {
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">New Run</h1>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <PageHeading>New Run</PageHeading>
+        <div className="grid w-full gap-4 sm:grid-cols-3 lg:w-auto">
+          <div className="space-y-2 min-w-[180px]">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div className="space-y-2 min-w-[160px]">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div className="space-y-2 min-w-[200px]">
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-4 lg:flex-row w-full">
         <GpuSelectionSkeleton />

@@ -1,7 +1,6 @@
 import { getProject } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { ErrorState } from "@/components/error-state";
-import { ProjectHeading } from "@/components/project-heading";
 
 interface ProjectLayoutProps {
   children: React.ReactNode;
@@ -26,12 +25,5 @@ export default async function ProjectLayout({ children, params }: ProjectLayoutP
     );
   }
 
-  const project = projectResult.project!;
-
-  return (
-    <div className="space-y-6">
-      <ProjectHeading project={project} />
-      {children}
-    </div>
-  );
+  return <div className="space-y-6">{children}</div>;
 }

@@ -7,12 +7,15 @@ import { OnboardingWrapper } from "@/components/onboarding-wrapper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getProjects } from "@/app/actions/api";
+import { PageHeading } from "@/components/page-heading";
 
 export default async function HomePage() {
   const result = await getProjects();
 
   if (!result.success) {
-    return <ErrorState title="Failed to load projects" message={result.error} />;
+    return (
+      <ErrorState title="Failed to load projects" message={result.error} />
+    );
   }
 
   const projects = result.projects ?? [];
@@ -22,7 +25,7 @@ export default async function HomePage() {
     <OnboardingWrapper hasProjects={hasProjects}>
       <div className="space-y-6">
         {/* Header */}
-        <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+        <PageHeading>Projects</PageHeading>
 
         {/* Search and New Project */}
         <div className="flex items-center gap-3">

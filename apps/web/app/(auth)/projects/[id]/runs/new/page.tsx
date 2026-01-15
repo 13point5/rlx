@@ -1,7 +1,9 @@
-import { getGpuSummary, getGpuAvailability } from "@/app/actions/api";
 import { GpuSelection } from "@/components/gpu-selection";
 import { GpuAvailability } from "@/components/gpu-availability";
-import { QueryClient, dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { PageHeading } from "@/components/page-heading";
+import { RunFields } from "./run-fields";
+import { getNewRunData } from "./new-run-data";
+import { HydrationBoundary } from "@tanstack/react-query";
 
 interface NewRunPageProps {
   params: Promise<{ id: string }>;
@@ -10,51 +12,15 @@ interface NewRunPageProps {
 
 export default async function NewRunPage({ searchParams }: NewRunPageProps) {
   const search = await searchParams;
-
-  // Fetch GPU summary first to determine defaults
-  const summaryResult = await getGpuSummary();
-
-  // Get selected GPU from URL or use first available as default
-  let selectedGpu = search.gpu;
-  let selectedCount = search.count;
-
-  // If no GPU selected, use first available as default (no redirect)
-  if (!selectedGpu && summaryResult.success && summaryResult.data) {
-    const entries = Object.entries(summaryResult.data);
-    if (entries.length > 0) {
-      selectedGpu = entries[0][0];
-      const firstGpuCounts = entries[0][1] as Record<string, unknown>;
-      selectedCount = Object.entries(firstGpuCounts).filter(
-        ([, v]) => typeof v === "object"
-      )[0]?.[0];
-    }
-  }
-
-  // Prefetch GPU availability data for React Query hydration
-  const queryClient = new QueryClient();
-
-  if (selectedGpu && selectedCount) {
-    await queryClient.prefetchInfiniteQuery({
-      queryKey: ["gpu-availability", selectedGpu, selectedCount],
-      queryFn: async ({ pageParam }) => {
-        const result = await getGpuAvailability({
-          gpu_type: selectedGpu,
-          gpu_count: parseInt(selectedCount!, 10),
-          page: pageParam,
-        });
-        if (!result.success) {
-          throw new Error(result.error || "Failed to fetch GPU availability");
-        }
-        return result.data;
-      },
-      initialPageParam: 1,
-    });
-  }
+  const { summaryResult, selectedGpu, selectedCount, state } = await getNewRunData(search);
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <HydrationBoundary state={state}>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">New Run</h1>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <PageHeading>New Run</PageHeading>
+          <RunFields className="lg:w-auto" />
+        </div>
 
         <div className="flex flex-col gap-4 lg:flex-row w-full">
           {summaryResult.success && summaryResult.data ? (

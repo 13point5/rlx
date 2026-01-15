@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, GitBranch } from "lucide-react";
 import { ErrorState } from "@/components/error-state";
+import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,19 +73,22 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
   return (
     <Tabs defaultValue="runs" className="space-y-4">
-      <div className="flex items-center gap-4">
-        <TabsList>
-          <TabsTrigger value="runs">Runs</TabsTrigger>
-          <TabsTrigger value="configs">Configs</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        <PageHeading>Runs</PageHeading>
+        <div className="flex items-center gap-4">
+          <TabsList>
+            <TabsTrigger value="runs">Runs</TabsTrigger>
+            <TabsTrigger value="configs">Configs</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+          </TabsList>
 
-        <Button asChild>
-          <Link href={`/projects/${id}/runs/new`}>
-            <Plus className="size-4" />
-            New Run
-          </Link>
-        </Button>
+          <Button asChild>
+            <Link href={`/projects/${id}/runs/new`}>
+              <Plus className="size-4" />
+              New Run
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <TabsContent value="runs" className="space-y-4">
