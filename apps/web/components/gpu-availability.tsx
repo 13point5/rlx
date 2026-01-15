@@ -229,17 +229,32 @@ export function GpuAvailability({
                     }}
                   >
                     <div className="space-y-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-3 lg:flex lg:items-start lg:justify-between">
                         <div className="space-y-2 flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-base md:text-lg break-words">
-                              {formatGpuName(instance.gpuType)} x{instance.gpuCount}
-                            </h3>
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 lg:block">
+                            <div className="space-y-1">
+                              <div className="flex flex-col items-start gap-1 lg:flex-row lg:items-center lg:gap-2">
+                                <h3 className="font-bold text-base md:text-lg break-words">
+                                  {formatGpuName(instance.gpuType)} x{instance.gpuCount}
+                                </h3>
 
-                            <span className="flex items-center text-xs md:text-sm text-muted-foreground">
-                              {getCountryFlag(instance.country)}{" "}
-                              {instance.dataCenter || instance.country}
-                            </span>
+                                <span className="flex items-center text-xs md:text-sm text-muted-foreground">
+                                  {getCountryFlag(instance.country)}{" "}
+                                  {instance.dataCenter || instance.country}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right lg:hidden">
+                              <p className="text-xs text-muted-foreground">
+                                {getProviderDisplayName(instance.provider)}
+                              </p>
+                              <p className="text-xl md:text-2xl font-bold mt-1">
+                                ${price?.toFixed(2) || "N/A"}
+                                <span className="text-xs md:text-sm font-normal text-muted-foreground ml-1">
+                                  /hr
+                                </span>
+                              </p>
+                            </div>
                           </div>
 
                           <div className="flex flex-wrap gap-2">
@@ -267,7 +282,7 @@ export function GpuAvailability({
                             </Badge>
                           </div>
                         </div>
-                        <div className="text-left lg:text-right lg:flex-shrink-0">
+                        <div className="hidden text-right lg:block lg:flex-shrink-0">
                           <p className="text-xs text-muted-foreground">
                             {getProviderDisplayName(instance.provider)}
                           </p>
@@ -280,15 +295,14 @@ export function GpuAvailability({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      <div className="flex flex-wrap gap-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <ServerIcon className="size-3 md:size-4" />
                             <span className="text-xs md:text-sm">CPU</span>
                           </div>
                           <p className="font-medium text-sm md:text-base">
-                            {instance.vcpu?.defaultCount || "N/A"}{" "}
-                            <span className="text-muted-foreground text-xs md:text-sm">CPU</span>
+                            {instance.vcpu?.defaultCount || "N/A"}
                           </p>
                         </div>
                         <div className="space-y-1">
