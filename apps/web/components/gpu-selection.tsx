@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -128,6 +128,16 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
 
   // Local state for each card's count selection
   const [cardCounts, setCardCounts] = useState<Record<string, string>>({});
+
+  // Sync URL with default selection on mount (without navigation flash)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasGpuInUrl = params.has("gpu");
+
+    if (!hasGpuInUrl && selectedGpuType && selectedGpuCount) {
+      router.replace(`?gpu=${selectedGpuType}&count=${selectedGpuCount}`, { scroll: false });
+    }
+  }, [selectedGpuType, selectedGpuCount, router]);
 
   const updateUrl = (gpu: string, count: string) => {
     router.push(`?gpu=${gpu}&count=${count}`, { scroll: false });
