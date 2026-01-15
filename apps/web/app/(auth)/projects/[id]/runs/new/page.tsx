@@ -34,20 +34,20 @@ export default async function NewRunPage({ searchParams }: Props) {
   const queryClient = new QueryClient();
 
   if (selectedGpu && selectedCount) {
-    await queryClient.prefetchQuery({
+    await queryClient.prefetchInfiniteQuery({
       queryKey: ["gpu-availability", selectedGpu, selectedCount],
-      queryFn: async () => {
+      queryFn: async ({ pageParam }) => {
         const result = await getGpuAvailability({
           gpu_type: selectedGpu,
           gpu_count: parseInt(selectedCount!, 10),
-          page: 1,
-          page_size: 20,
+          page: pageParam,
         });
         if (!result.success) {
           throw new Error(result.error || "Failed to fetch GPU availability");
         }
         return result.data;
       },
+      initialPageParam: 1,
     });
   }
 
