@@ -1,4 +1,4 @@
-import { getProject } from "@/app/actions/api";
+import { getProject } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { ErrorState } from "@/components/error-state";
 import { ProjectHeading } from "@/components/project-heading";

@@ -1,4 +1,4 @@
-import { getProject } from "@/app/actions/api";
+import { getProject } from "@/lib/data";
 import type { BreadcrumbItem } from "@/lib/types";
 
 export async function generateBreadcrumbs(pathSegments: string[]): Promise<{

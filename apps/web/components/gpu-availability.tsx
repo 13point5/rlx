@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
 import { getGpuAvailability } from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -87,26 +86,25 @@ function getSpinUpTimeColor(minutes: number): string {
   return "text-red-500";
 }
 
-export function GpuAvailability() {
-  const searchParams = useSearchParams();
-  const selectedGpu = searchParams.get("gpu");
-  const selectedCount = searchParams.get("count");
+interface GpuAvailabilityProps {
+  gpu?: string;
+  count?: string;
+}
 
+export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["gpu-availability", selectedGpu, selectedCount],
+    queryKey: ["gpu-availability", gpu, count],
     queryFn: async () => {
-      if (!selectedGpu || !selectedCount) {
+      if (!gpu || !count) {
         return null;
       }
 
       const result = await getGpuAvailability({
-        gpu_type: selectedGpu,
-        gpu_count: parseInt(selectedCount, 10),
+        gpu_type: gpu,
+        gpu_count: parseInt(count, 10),
         page: 1,
         page_size: 20,
       });
-
-      console.log("GPU Availability API response:", result);
 
       if (!result.success) {
         throw new Error(result.error || "Failed to fetch GPU availability");
@@ -114,11 +112,10 @@ export function GpuAvailability() {
 
       return result.data as AvailabilityResponse;
     },
-    enabled: !!selectedGpu && !!selectedCount,
-    staleTime: 30 * 1000,
+    enabled: !!gpu && !!count,
   });
 
-  if (!selectedGpu || !selectedCount) {
+  if (!gpu || !count) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -132,23 +129,6 @@ export function GpuAvailability() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Available Instances</h2>
-        </div>
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="h-40 rounded-md border border-border animate-pulse"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -168,7 +148,7 @@ export function GpuAvailability() {
     const priceB = b.prices.onDemand ?? b.prices.communityPrice ?? Infinity;
     return priceA - priceB;
   });
-  const displayName = selectedGpu.replace(/_/g, " ");
+  const displayName = gpu.replace(/_/g, " ");
 
   return (
     <div className="space-y-4">
@@ -182,7 +162,7 @@ export function GpuAvailability() {
       {instances.length === 0 ? (
         <div className="rounded-md border border-dashed border-border p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            No instances available for {displayName} x {selectedCount}
+            No instances available for {displayName} x {count}
           </p>
         </div>
       ) : (
