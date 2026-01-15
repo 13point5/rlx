@@ -10,17 +10,36 @@ import {
 import { cn } from "@/lib/utils";
 
 interface RunFieldsProps {
+  runName: string;
+  branch: string;
+  config: string;
+  onRunNameChange: (value: string) => void;
+  onBranchChange: (value: string) => void;
+  onConfigChange: (value: string) => void;
   className?: string;
 }
 
-export function RunFields({ className }: RunFieldsProps) {
+export function RunFields({
+  runName,
+  branch,
+  config,
+  onRunNameChange,
+  onBranchChange,
+  onConfigChange,
+  className,
+}: RunFieldsProps) {
   return (
     <div className={cn("grid w-full gap-4 sm:grid-cols-3", className)} data-slot="run-fields">
       <LabeledField label="Run name" htmlFor="run-name" className="min-w-[180px]">
-        <Input id="run-name" placeholder="e.g. PPO baseline" />
+        <Input
+          id="run-name"
+          placeholder="e.g. PPO baseline"
+          value={runName}
+          onChange={(event) => onRunNameChange(event.target.value)}
+        />
       </LabeledField>
       <LabeledField label="Repo branch" htmlFor="repo-branch" className="min-w-[160px]">
-        <Select defaultValue="main">
+        <Select value={branch} onValueChange={onBranchChange}>
           <SelectTrigger id="repo-branch" className="w-full">
             <SelectValue placeholder="Select branch" />
           </SelectTrigger>
@@ -31,7 +50,7 @@ export function RunFields({ className }: RunFieldsProps) {
         </Select>
       </LabeledField>
       <LabeledField label="Config" htmlFor="run-config" className="min-w-[200px]">
-        <Select defaultValue="configs/ppo.yaml">
+        <Select value={config} onValueChange={onConfigChange}>
           <SelectTrigger id="run-config" className="w-full">
             <SelectValue placeholder="Select config" />
           </SelectTrigger>

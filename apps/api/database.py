@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -23,14 +23,20 @@ if DATABASE_URL:
     if DATABASE_URL.endswith("?"):
         DATABASE_URL = DATABASE_URL[:-1]
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,  # Test connections before using them (handles idle timeouts)
-    pool_recycle=300,    # Recycle connections after 5 minutes
-) if DATABASE_URL else None
+engine = (
+    create_async_engine(
+        DATABASE_URL,
+        echo=True,
+        pool_pre_ping=True,  # Test connections before using them (handles idle timeouts)
+        pool_recycle=300,  # Recycle connections after 5 minutes
+    )
+    if DATABASE_URL
+    else None
+)
 async_session = (
-    async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False) if engine else None
+    async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    if engine
+    else None
 )
 
 
@@ -48,7 +54,9 @@ class GitHubConnection(Base):
     access_token = Column(String, nullable=False)
     refresh_token = Column(String)
     token_expires_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -61,12 +69,16 @@ class Project(Base):
 
     id = Column(Integer, primary_key=True)
     clerk_user_id = Column(String, nullable=False, index=True)
-    repo_id = Column(Integer, nullable=False)  # GitHub repo ID (permanent unique identifier)
+    repo_id = Column(
+        Integer, nullable=False
+    )  # GitHub repo ID (permanent unique identifier)
     repo_name = Column(String, nullable=False)  # repo name
     repo_owner = Column(String, nullable=False)  # repo owner
     repo_owner_type = Column(String, nullable=False)  # "User" or "Organization"
     repo_url = Column(String, nullable=False)  # Full GitHub URL
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -74,7 +86,9 @@ class Project(Base):
     )
 
     # Unique constraint: one project per user per repo
-    __table_args__ = (UniqueConstraint("clerk_user_id", "repo_id", name="unique_user_repo"),)
+    __table_args__ = (
+        UniqueConstraint("clerk_user_id", "repo_id", name="unique_user_repo"),
+    )
 
     # Property to derive full_name when needed (not stored in DB)
     @property
@@ -82,10 +96,42 @@ class Project(Base):
         return f"{self.repo_owner}/{self.repo_name}"
 
 
+class Run(Base):
+    __tablename__ = "runs"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, nullable=False, index=True)
+    clerk_user_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    branch = Column(String, nullable=False)
+    config_path = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="provisioning")
+    provider = Column(String, nullable=False)
+    region = Column(String, nullable=False)
+    data_center = Column(String)
+    country = Column(String)
+    gpu_type = Column(String, nullable=False)
+    gpu_count = Column(Integer, nullable=False)
+    security = Column(String, nullable=False)
+    cloud_id = Column(String, nullable=False)
+    pod_id = Column(String, nullable=False)
+    is_spot = Column(Boolean, nullable=False, default=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency that provides a database session."""
     if async_session is None:
-        raise RuntimeError("Database not configured. Set DATABASE_URL environment variable.")
+        raise RuntimeError(
+            "Database not configured. Set DATABASE_URL environment variable."
+        )
     async with async_session() as session:
         try:
             yield session

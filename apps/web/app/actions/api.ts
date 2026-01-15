@@ -2,7 +2,16 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
-import type { GitHubOwner, GitHubRepo, GpuSummaryData, GpuAvailabilityResponse, Project } from "@/lib/types";
+import type {
+  GitHubOwner,
+  GitHubRepo,
+  GpuSummaryData,
+  GpuAvailabilityResponse,
+  Project,
+  RunInstanceSelection,
+  RunRecord,
+  RunStatusResponse,
+} from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -613,6 +622,162 @@ export async function deleteProject(id: number): Promise<{
         success: false,
         error:
           detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function startRun(input: {
+  projectId: number;
+  name: string;
+  branch: string;
+  config: string;
+  instance: RunInstanceSelection & { instanceId: string };
+}): Promise<{
+  success: boolean;
+  runId?: number;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/runs`,
+      {
+        project_id: input.projectId,
+        name: input.name,
+        branch: input.branch,
+        config_path: input.config,
+        instance: {
+          cloud_id: input.instance.cloudId,
+          gpu_type: input.instance.gpuType,
+          gpu_count: input.instance.gpuCount,
+          socket: input.instance.socket,
+          provider: input.instance.provider,
+          region: input.instance.region,
+          data_center: input.instance.dataCenter,
+          country: input.instance.country,
+          security: input.instance.security,
+          is_spot: input.instance.isSpot ?? false,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return { success: true, runId: response.data.id };
+  } catch (error) {
+    console.error("Error starting run:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getRun(runId: number): Promise<{
+  success: boolean;
+  run?: RunRecord;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/runs/${runId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, run: response.data };
+  } catch (error) {
+    console.error("Error fetching run:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getRunStatus(runId: number): Promise<{
+  success: boolean;
+  status?: RunStatusResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/runs/${runId}/status`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, status: response.data };
+  } catch (error) {
+    console.error("Error fetching run status:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 

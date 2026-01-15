@@ -103,3 +103,31 @@ export interface GpuAvailabilityResponse {
   totalCount: number;
 }
 
+export type RunInstanceSelection = Pick<
+  GpuInstance,
+  "cloudId" | "gpuType" | "socket" | "provider" | "region" | "dataCenter" | "country" | "gpuCount" | "security" | "gpuMemory" | "isSpot"
+>;
+
+export interface RunRecord {
+  id: number;
+  project_id: number;
+  name: string;
+  status: string;
+  branch: string;
+  config_path: string;
+  provider: string;
+  region: string;
+  data_center: string | null;
+  gpu_type: string;
+  gpu_count: number;
+  security: string;
+  cloud_id: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface RunStatusResponse {
+  status: string;
+  ssh_connection: string | null;
+  ip: string | null;
+}

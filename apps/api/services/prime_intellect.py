@@ -1,11 +1,14 @@
 import os
-from typing import Any, Dict
+import os
+from typing import Any, Dict, List
 
 import httpx
 
 
 BASE_URL = "https://api.primeintellect.ai"
 DEFAULT_TIMEOUT = 10.0
+POD_CREATE_TIMEOUT = 30.0
+DEFAULT_IMAGE = "ubuntu_22_cuda_12"
 
 
 class PrimeIntellectAPIError(Exception):
@@ -42,6 +45,31 @@ async def fetch_gpu_summary() -> Dict[str, Any]:
 
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         response = await client.get(url, headers=headers)
+
+    return _handle_response(response)
+
+
+async def create_pod(payload: Dict[str, Any]) -> Dict[str, Any]:
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/"
+
+    async with httpx.AsyncClient(timeout=POD_CREATE_TIMEOUT) as client:
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+        except httpx.ReadTimeout as exc:
+            raise PrimeIntellectAPIError(
+                504, "Prime Intellect create pod timed out"
+            ) from exc
+
+    return _handle_response(response)
+
+
+async def fetch_pod_status(pod_ids: List[str]) -> Dict[str, Any]:
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/status"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.get(url, headers=headers, params={"pod_ids": pod_ids})
 
     return _handle_response(response)
 
