@@ -12,45 +12,7 @@ import {
   ZapIcon,
   Loader2,
 } from "lucide-react";
-
-// Match the actual Prime Intellect API response format
-interface GpuInstancePrices {
-  currency: string;
-  onDemand: number | null;
-  communityPrice: number | null;
-  isVariable: boolean;
-}
-
-interface GpuInstance {
-  cloudId: string;
-  gpuType: string;
-  socket: string;
-  provider: string;
-  gpuCount: number;
-  gpuMemory: number;
-  security: string;
-  prices: GpuInstancePrices;
-  images: string[];
-  region: string;
-  dataCenter: string;
-  country: string;
-  stockStatus: string;
-  provisioningTime?: number | null;
-  vcpu?: { defaultCount: number };
-  memory?: { defaultCount: number };
-  disk?: {
-    minCount: number;
-    defaultCount: number;
-    maxCount: number;
-    pricePerUnit: number;
-  };
-  isSpot?: boolean;
-}
-
-interface AvailabilityResponse {
-  items: GpuInstance[];
-  totalCount: number;
-}
+import type { GpuAvailabilityResponse } from "@/lib/types";
 
 function formatGpuName(gpuType: string): string {
   // Convert "H100_80GB" to "H100 80GB"
@@ -114,11 +76,18 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
         throw new Error(result.error || "Failed to fetch GPU availability");
       }
 
-      return result.data as AvailabilityResponse;
+      if (!result.data) {
+        throw new Error(result.error || "No data returned from API");
+      }
+
+      return result.data;
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => {
-      const loadedCount = allPages.reduce((sum, page) => sum + page.items.length, 0);
+      const loadedCount = allPages.reduce(
+        (sum, page) => sum + page.items.length,
+        0
+      );
       if (loadedCount < lastPage.totalCount) {
         return allPages.length + 1;
       }
@@ -187,7 +156,8 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Available Instances</h2>
         <span className="text-sm text-muted-foreground">
-          {hasNextPage ? `${instances.length} of ${totalCount}` : totalCount} available
+          {hasNextPage ? `${instances.length} of ${totalCount}` : totalCount}{" "}
+          available
         </span>
       </div>
 

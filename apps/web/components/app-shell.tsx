@@ -1,10 +1,5 @@
 import { AppHeader } from "@/components/app-header";
-
-interface BreadcrumbItem {
-  label: string;
-  href?: string;
-  items?: { label: string; href: string; active?: boolean }[];
-}
+import type { BreadcrumbItem } from "@/lib/types";
 
 interface AppShellProps {
   children: React.ReactNode;
