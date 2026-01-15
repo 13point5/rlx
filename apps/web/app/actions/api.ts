@@ -2,7 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
-import type { GitHubOwner, GitHubRepo, GpuSummaryData, Project } from "@/lib/types";
+import type { GitHubOwner, GitHubRepo, GpuSummaryData, GpuAvailabilityResponse, Project } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
@@ -344,7 +344,7 @@ export async function getGpuAvailability(params?: {
   security?: string;
 }): Promise<{
   success: boolean;
-  data?: any;
+  data?: GpuAvailabilityResponse;
   error?: string;
 }> {
   const { getToken, userId } = await auth();
