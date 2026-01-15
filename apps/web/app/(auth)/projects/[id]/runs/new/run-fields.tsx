@@ -29,8 +29,8 @@ export function RunFields({
   className,
 }: RunFieldsProps) {
   return (
-    <div className={cn("grid w-full gap-4 sm:grid-cols-3", className)} data-slot="run-fields">
-      <LabeledField label="Run name" htmlFor="run-name" className="min-w-[180px]">
+    <div className={cn("grid w-full gap-4 md:grid-cols-2 lg:grid-cols-3", className)} data-slot="run-fields">
+      <LabeledField label="Run name" htmlFor="run-name" className="md:min-w-[180px]">
         <Input
           id="run-name"
           placeholder="e.g. PPO baseline"
@@ -38,7 +38,7 @@ export function RunFields({
           onChange={(event) => onRunNameChange(event.target.value)}
         />
       </LabeledField>
-      <LabeledField label="Repo branch" htmlFor="repo-branch" className="min-w-[160px]">
+      <LabeledField label="Repo branch" htmlFor="repo-branch" className="md:min-w-[160px]">
         <Select value={branch} onValueChange={onBranchChange}>
           <SelectTrigger id="repo-branch" className="w-full">
             <SelectValue placeholder="Select branch" />
@@ -49,7 +49,7 @@ export function RunFields({
           </SelectContent>
         </Select>
       </LabeledField>
-      <LabeledField label="Config" htmlFor="run-config" className="min-w-[200px]">
+      <LabeledField label="Config" htmlFor="run-config" className="md:min-w-[200px]">
         <Select value={config} onValueChange={onConfigChange}>
           <SelectTrigger id="run-config" className="w-full">
             <SelectValue placeholder="Select config" />

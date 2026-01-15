@@ -4,8 +4,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-2">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Settings</h1>
+        <p className="text-muted-foreground mt-2 text-sm md:text-base">
           Manage your account settings and integrations
         </p>
       </div>
@@ -13,7 +13,7 @@ export default function SettingsPage() {
       <div className="border-t pt-6">
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">GitHub Integration</h2>
+            <h2 className="text-lg md:text-xl font-semibold">GitHub Integration</h2>
             <p className="text-sm text-muted-foreground mt-1">
               Connect your GitHub account to import repositories and track experiments
             </p>

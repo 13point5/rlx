@@ -54,7 +54,7 @@ export function AppHeader({
             </div>
           </div>
         ) : breadcrumbs.length > 0 ? (
-          <nav className="flex items-center text-sm">
+          <nav className="flex items-center text-sm overflow-hidden flex-1">
             {breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
               return (
@@ -79,7 +79,7 @@ export function AppHeader({
                               size={16}
                             />
                           )}
-                          <span>{crumb.label}</span>
+                          <span className="truncate max-w-[200px] sm:max-w-none">{crumb.label}</span>
                         </Link>
                       ) : (
                         <>
@@ -92,11 +92,11 @@ export function AppHeader({
                             />
                           )}
                           <span
-                            className={
+                            className={`truncate max-w-[200px] sm:max-w-none ${
                               isLast
                                 ? "font-semibold text-foreground"
                                 : "font-medium"
-                            }
+                            }`}
                           >
                             {crumb.label}
                           </span>
@@ -153,15 +153,15 @@ export function AppHeader({
                           size={16}
                         />
                       )}
-                      {crumb.label}
+                      <span className="truncate max-w-[200px] sm:max-w-none">{crumb.label}</span>
                     </Link>
                   ) : (
                     <span
-                      className={
+                      className={`truncate max-w-[200px] sm:max-w-none ${
                         isLast
                           ? "py-1 font-semibold text-foreground"
                           : "py-1 font-medium"
-                      }
+                      }`}
                     >
                       {crumb.label}
                     </span>

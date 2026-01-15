@@ -100,8 +100,8 @@ export function NewRunLayout({
       <HydrationBoundary state={state}>
         <div className="space-y-6">
           <div className="flex flex-col gap-4">
-            <PageHeading className="whitespace-nowrap">New Run</PageHeading>
-            <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end">
+            <PageHeading>New Run</PageHeading>
+            <div className="flex w-full flex-col gap-3 md:flex-row md:items-end">
               <RunFields
                 runName={runName}
                 branch={branch}
@@ -109,11 +109,11 @@ export function NewRunLayout({
                 onRunNameChange={setRunName}
                 onBranchChange={setBranch}
                 onConfigChange={setConfig}
-                className="lg:w-auto"
+                className="md:w-auto"
               />
               <div className="flex flex-col gap-2">
                 <Button
-                  className="w-full lg:w-auto"
+                  className="w-full md:w-auto"
                   disabled={!effectiveSelectedInstance || isStarting}
                   onClick={handleStartRun}
                 >
@@ -126,7 +126,7 @@ export function NewRunLayout({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 lg:flex-row w-full">
+          <div className="flex flex-col gap-4 md:flex-row w-full">
             {summaryResult.success && summaryResult.data ? (
               <GpuSelection
                 summary={summaryResult.data}
