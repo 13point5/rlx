@@ -2,11 +2,11 @@ import { generateBreadcrumbs } from "@/lib/breadcrumb-utils";
 import { BreadcrumbErrorDialog } from "@/components/breadcrumb-error-dialog";
 import { AppHeader } from "@/components/app-header";
 
-interface Props {
+interface BreadcrumbsPageProps {
   params: Promise<{ path: string[] }>;
 }
 
-export default async function BreadcrumbPage({ params }: Props) {
+export default async function BreadcrumbPage({ params }: BreadcrumbsPageProps) {
   const { path } = await params;
 
   const { breadcrumbs, error } = await generateBreadcrumbs(path);
