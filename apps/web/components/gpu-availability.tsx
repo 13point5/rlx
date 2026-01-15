@@ -49,6 +49,7 @@ interface GpuAvailabilityProps {
   count?: string;
   selectedInstanceId?: string | null;
   onSelectInstance?: (instanceId: string) => void;
+  forceLoading?: boolean;
 }
 
 export function GpuAvailability({
@@ -56,6 +57,7 @@ export function GpuAvailability({
   count,
   selectedInstanceId,
   onSelectInstance,
+  forceLoading = false,
 }: GpuAvailabilityProps) {
   const {
     data,
@@ -64,6 +66,7 @@ export function GpuAvailability({
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isFetching,
   } = useInfiniteQuery({
     queryKey: ["gpu-availability", gpu, count],
     queryFn: async ({ pageParam }) => {
@@ -151,15 +154,35 @@ export function GpuAvailability({
   });
   const displayName = gpu.replace(/_/g, " ");
   const totalCount = data?.pages[0]?.totalCount || 0;
+  const isUpdating = (isFetching && !isLoading) || forceLoading;
+  const availabilityLabel =
+    instances.length < totalCount
+      ? `Showing ${instances.length} of ${totalCount}`
+      : `${totalCount} available`;
+
+  console.log("GpuAvailability counts", {
+    gpu,
+    count,
+    totalCount,
+    instancesLength: instances.length,
+    instances,
+    pages: data?.pages.map((page) => ({
+      totalCount: page.totalCount,
+      items: page.items.length,
+    })),
+  });
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-baseline gap-3">
         <h2 className="text-xl font-semibold">Available Instances</h2>
-        <span className="text-sm text-muted-foreground">
-          {hasNextPage ? `${instances.length} of ${totalCount}` : totalCount}{" "}
-          available
-        </span>
+        {isUpdating ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            ({availabilityLabel})
+          </span>
+        )}
       </div>
 
       {instances.length === 0 ? (
@@ -169,143 +192,172 @@ export function GpuAvailability({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 h-[calc(100vh-260px)] overflow-y-auto pr-1">
-          {instances.map((instance, index) => {
-            const price =
-              instance.prices.onDemand ?? instance.prices.communityPrice;
-            const instanceId = [
-              instance.cloudId,
-              instance.provider,
-              instance.region,
-              instance.dataCenter,
-              instance.country,
-              instance.gpuType,
-              instance.gpuCount,
-              instance.security,
-              instance.isSpot ? "spot" : "ondemand",
-            ]
-              .filter(Boolean)
-              .join("-");
-            const instanceKey = `${instanceId}-${index}`;
-            const isSelected = instanceId === selectedInstanceId;
-
-            return (
-              <div
-                key={instanceKey}
-                className={cn(
-                  "p-4 border border-border/90 rounded-md bg-transparent transition-colors cursor-pointer",
-                  !isSelected && "hover:border-border hover:bg-accent/40",
-                  isSelected && "border-primary/70 bg-card"
-                )}
-                onClick={() => {
-                  console.log("Selected instance", {
-                    instanceId,
-                    provider: instance.provider,
-                    region: instance.region,
-                    gpuType: instance.gpuType,
-                    gpuCount: instance.gpuCount,
-                    index,
-                  });
-                  onSelectInstance?.(instanceId);
-                }}
-              >
-                <div className="space-y-4">
-                  {/* Header with GPU name and price */}
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <div className="flex xl:items-center gap-1 xl:gap-3 xl:flex-row flex-col">
-                        <h3 className="font-bold text-lg">
-                          {formatGpuName(instance.gpuType)} x{instance.gpuCount}
-                        </h3>
-
-                        <span className="flex items-center text-sm text-muted-foreground">
-                          {getCountryFlag(instance.country)}{" "}
-                          {instance.dataCenter || instance.country}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {instance.isSpot && (
-                          <Badge
-                            variant="outline"
-                            className="bg-amber-500/20 text-amber-400 border-amber-500/50"
-                          >
-                            <ZapIcon className="size-3 mr-1" />
-                            SPOT
-                          </Badge>
-                        )}
-                        <Badge
-                          variant="outline"
-                          className="bg-muted/50 border-muted-foreground/30"
-                        >
-                          {instance.socket}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className="bg-sky-500/10 text-sky-400 border-sky-500/30"
-                        >
-                          <ShieldCheckIcon className="size-3 mr-1" />
-                          {instance.security.toUpperCase().replace("_", " ")}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">
-                        {getProviderDisplayName(instance.provider)}
-                      </p>
-                      <p className="text-2xl font-bold mt-1">
-                        ${price?.toFixed(2) || "N/A"}
-                        <span className="text-sm font-normal text-muted-foreground ml-1">
-                          /hr
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Specs Grid */}
-                  {/* <div className="grid grid-cols-3 gap-4"> */}
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <ServerIcon className="size-4" />
-                        <span className="text-sm">CPU</span>
-                      </div>
-                      <p className="font-medium">
-                        {instance.vcpu?.defaultCount || "N/A"}{" "}
-                        <span className="text-muted-foreground text-sm">
-                          CPU
-                        </span>
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Database className="size-4" />
-                        <span className="text-sm">Memory</span>
-                      </div>
-                      <p className="font-medium">
-                        {instance.memory?.defaultCount || "N/A"}{" "}
-                        <span className="text-muted-foreground text-sm">
-                          GB
-                        </span>
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <HardDrive className="size-4" />
-                        <span className="text-sm">Disk size</span>
-                      </div>
-                      <p className="font-medium">
-                        {instance.disk?.defaultCount || "N/A"}{" "}
-                        <span className="text-muted-foreground text-sm">
-                          GB
-                        </span>
-                      </p>
-                    </div>
-                  </div>
+        <div className="flex gap-4 h-[calc(100vh-260px)] overflow-y-auto pr-1">
+          {isUpdating
+            ? [0, 1].map((column) => (
+                <div
+                  key={`skeleton-column-${column}`}
+                  className="flex-1 space-y-4"
+                >
+                  {Array.from({ length: 2 }).map((_, index) => (
+                    <div
+                      key={`instance-skeleton-${column}-${index}`}
+                      className="h-40 rounded-md border border-border bg-accent/40 animate-pulse"
+                    />
+                  ))}
                 </div>
-              </div>
-            );
-          })}
+              ))
+            : [0, 1].map((column) => (
+                <div
+                  key={`instances-column-${column}`}
+                  className="flex-1 space-y-4"
+                >
+                  {instances
+                    .filter((_, index) => index % 2 === column)
+                    .map((instance, index) => {
+                      const price =
+                        instance.prices.onDemand ??
+                        instance.prices.communityPrice;
+                      const instanceId = [
+                        instance.cloudId,
+                        instance.provider,
+                        instance.region,
+                        instance.dataCenter,
+                        instance.country,
+                        instance.gpuType,
+                        instance.gpuCount,
+                        instance.security,
+                        instance.isSpot ? "spot" : "ondemand",
+                      ]
+                        .filter(Boolean)
+                        .join("-");
+                      const instanceKey = `${instanceId}-${index}`;
+                      const isSelected = instanceId === selectedInstanceId;
+
+                      return (
+                        <div
+                          key={instanceKey}
+                          className={cn(
+                            "p-4 border border-border/90 rounded-md bg-transparent transition-colors cursor-pointer",
+                            !isSelected &&
+                              "hover:border-border hover:bg-accent/40",
+                            isSelected && "border-primary/70 bg-card"
+                          )}
+                          data-instance-index={index}
+                          onClick={() => {
+                            console.log("Selected instance", {
+                              instanceId,
+                              provider: instance.provider,
+                              region: instance.region,
+                              gpuType: instance.gpuType,
+                              gpuCount: instance.gpuCount,
+                              index,
+                            });
+                            onSelectInstance?.(instanceId);
+                          }}
+                        >
+                          <div className="space-y-4">
+                            {/* Header with GPU name and price */}
+                            <div className="flex items-start justify-between">
+                              <div className="space-y-2">
+                                <div className="flex xl:items-center gap-1 xl:gap-3 xl:flex-row flex-col">
+                                  <h3 className="font-bold text-lg">
+                                    {formatGpuName(instance.gpuType)} x
+                                    {instance.gpuCount}
+                                  </h3>
+
+                                  <span className="flex items-center text-sm text-muted-foreground">
+                                    {getCountryFlag(instance.country)}{" "}
+                                    {instance.dataCenter || instance.country}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {instance.isSpot && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-500/20 text-amber-400 border-amber-500/50"
+                                    >
+                                      <ZapIcon className="size-3 mr-1" />
+                                      SPOT
+                                    </Badge>
+                                  )}
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-muted/50 border-muted-foreground/30"
+                                  >
+                                    {instance.socket}
+                                  </Badge>
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-sky-500/10 text-sky-400 border-sky-500/30"
+                                  >
+                                    <ShieldCheckIcon className="size-3 mr-1" />
+                                    {instance.security
+                                      .toUpperCase()
+                                      .replace("_", " ")}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-muted-foreground">
+                                  {getProviderDisplayName(instance.provider)}
+                                </p>
+                                <p className="text-2xl font-bold mt-1">
+                                  ${price?.toFixed(2) || "N/A"}
+                                  <span className="text-sm font-normal text-muted-foreground ml-1">
+                                    /hr
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Specs Grid */}
+                            {/* <div className="grid grid-cols-3 gap-4"> */}
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 text-muted-foreground">
+                                  <ServerIcon className="size-4" />
+                                  <span className="text-sm">CPU</span>
+                                </div>
+                                <p className="font-medium">
+                                  {instance.vcpu?.defaultCount || "N/A"}{" "}
+                                  <span className="text-muted-foreground text-sm">
+                                    CPU
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 text-muted-foreground">
+                                  <Database className="size-4" />
+                                  <span className="text-sm">Memory</span>
+                                </div>
+                                <p className="font-medium">
+                                  {instance.memory?.defaultCount || "N/A"}{" "}
+                                  <span className="text-muted-foreground text-sm">
+                                    GB
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 text-muted-foreground">
+                                  <HardDrive className="size-4" />
+                                  <span className="text-sm">Disk size</span>
+                                </div>
+                                <p className="font-medium">
+                                  {instance.disk?.defaultCount || "N/A"}{" "}
+                                  <span className="text-muted-foreground text-sm">
+                                    GB
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
         </div>
       )}
 

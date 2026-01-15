@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -24,6 +24,7 @@ interface Props {
   summary: GpuSummaryData;
   selectedGpu?: string;
   selectedCount?: string;
+  onSelectionChange?: (gpu: string, count: string) => void;
 }
 
 type GpuSummaryCardProps = {
@@ -110,7 +111,12 @@ function GpuSummaryCard({
   );
 }
 
-export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
+export function GpuSelection({
+  summary,
+  selectedGpu,
+  selectedCount,
+  onSelectionChange,
+}: Props) {
   const router = useRouter();
   const entries = useMemo(() => Object.entries(summary || {}), [summary]);
 
@@ -127,8 +133,22 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
   const selectedGpuType = selectedGpu || firstGpuType || "";
   const selectedGpuCount = selectedCount || firstCountKey || "";
 
+  const [pendingSelection, setPendingSelection] = useState<{
+    gpu: string;
+    count: string;
+  } | null>(null);
+  const [, startTransition] = useTransition();
+
   // Local state for each card's count selection
   const [cardCounts, setCardCounts] = useState<Record<string, string>>({});
+
+  const hasPendingSelection = Boolean(pendingSelection);
+  const isPendingSelection =
+    hasPendingSelection &&
+    (pendingSelection!.gpu !== selectedGpuType ||
+      pendingSelection!.count !== selectedGpuCount);
+  const optimisticGpu = isPendingSelection ? pendingSelection!.gpu : selectedGpuType;
+  const optimisticCount = isPendingSelection ? pendingSelection!.count : selectedGpuCount;
 
   // Sync URL with default selection on mount (without navigation flash)
   useEffect(() => {
@@ -140,9 +160,6 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
     }
   }, [selectedGpuType, selectedGpuCount, router]);
 
-  const updateUrl = (gpu: string, count: string) => {
-    router.push(`?gpu=${gpu}&count=${count}`, { scroll: false });
-  };
 
   if (!entries.length) {
     return (
@@ -166,9 +183,9 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
           // Use card-specific count if set, otherwise use URL count if this card is selected, otherwise use default
           const effectiveCount =
             cardCounts[gpuType] ||
-            (gpuType === selectedGpuType ? selectedGpuCount : defaultCount);
+            (gpuType === optimisticGpu ? optimisticCount : defaultCount);
 
-          const isSelected = gpuType === selectedGpuType;
+          const isSelected = gpuType === optimisticGpu;
 
           return (
             <GpuSummaryCard
@@ -178,10 +195,20 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
               selectedCount={effectiveCount}
               onSelectCount={(val) => {
                 setCardCounts((prev) => ({ ...prev, [gpuType]: val }));
-                updateUrl(gpuType, val);
+                setPendingSelection({ gpu: gpuType, count: val });
+                onSelectionChange?.(gpuType, val);
+                startTransition(() => {
+                  router.push(`?gpu=${gpuType}&count=${val}`, { scroll: false });
+                });
               }}
               isSelected={isSelected}
-              onClick={() => updateUrl(gpuType, effectiveCount)}
+              onClick={() => {
+                setPendingSelection({ gpu: gpuType, count: effectiveCount });
+                onSelectionChange?.(gpuType, effectiveCount);
+                startTransition(() => {
+                  router.push(`?gpu=${gpuType}&count=${effectiveCount}`, { scroll: false });
+                });
+              }}
             />
           );
         })}

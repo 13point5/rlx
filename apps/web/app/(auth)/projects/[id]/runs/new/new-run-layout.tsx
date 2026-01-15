@@ -39,11 +39,18 @@ export function NewRunLayout({
     id: string;
   } | null>(null);
   const selectionKey = `${selectedGpu ?? ""}:${selectedCount ?? ""}`;
+  const [optimisticSelectionKey, setOptimisticSelectionKey] = useState(selectionKey);
   const selectedInstanceId =
     selectionState && selectionState.key === selectionKey ? selectionState.id : null;
+  const isSelectionPending = optimisticSelectionKey !== selectionKey;
+  const effectiveSelectedInstanceId = isSelectionPending ? null : selectedInstanceId;
 
   const handleSelectInstance = (instanceId: string) => {
     setSelectionState({ key: selectionKey, id: instanceId });
+  };
+
+  const handleSelectionChange = (gpu: string, count: string) => {
+    setOptimisticSelectionKey(`${gpu}:${count}`);
   };
 
   return (
@@ -54,7 +61,7 @@ export function NewRunLayout({
             <PageHeading className="whitespace-nowrap">New Run</PageHeading>
             <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-end">
               <RunFields className="lg:w-auto" />
-              <Button className="w-full lg:w-auto" disabled={!selectedInstanceId}>
+              <Button className="w-full lg:w-auto" disabled={!effectiveSelectedInstanceId}>
                 Start Run
               </Button>
             </div>
@@ -62,11 +69,13 @@ export function NewRunLayout({
 
           <div className="flex flex-col gap-4 lg:flex-row w-full">
             {summaryResult.success && summaryResult.data ? (
-              <GpuSelection
-                summary={summaryResult.data}
-                selectedGpu={selectedGpu}
-                selectedCount={selectedCount}
-              />
+            <GpuSelection
+              summary={summaryResult.data}
+              selectedGpu={selectedGpu}
+              selectedCount={selectedCount}
+              onSelectionChange={handleSelectionChange}
+            />
+
             ) : (
               <p className="text-sm text-muted-foreground">
                 Unable to load GPU summary: {summaryResult.error || "unknown error"}
@@ -74,12 +83,14 @@ export function NewRunLayout({
             )}
 
             <div className="flex-1">
-              <GpuAvailability
-                gpu={selectedGpu}
-                count={selectedCount}
-                selectedInstanceId={selectedInstanceId}
-                onSelectInstance={handleSelectInstance}
-              />
+            <GpuAvailability
+              gpu={selectedGpu}
+              count={selectedCount}
+              selectedInstanceId={effectiveSelectedInstanceId}
+              onSelectInstance={handleSelectInstance}
+              forceLoading={isSelectionPending}
+            />
+
             </div>
           </div>
         </div>
