@@ -7,7 +7,7 @@ interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function NewRunPage({ params, searchParams }: Props) {
+export default async function NewRunPage({ searchParams }: Props) {
   const search = await searchParams;
 
   // Note: Project validation is handled by breadcrumbs

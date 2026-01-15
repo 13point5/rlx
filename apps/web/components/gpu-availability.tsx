@@ -129,6 +129,23 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Available Instances</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div
+              key={i}
+              className="h-40 rounded-md border border-border bg-accent animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
