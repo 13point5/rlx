@@ -17,17 +17,17 @@ export default async function LandingPage() {
             </div>
             <span className="font-semibold">RLX</span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {userId ? (
-              <Button asChild>
+              <Button asChild size="sm" className="sm:h-10 sm:px-4">
                 <Link href="/home">Go to Dashboard</Link>
               </Button>
             ) : (
               <>
-                <Button variant="ghost" asChild>
+                <Button variant="ghost" asChild size="sm" className="sm:h-10 sm:px-4">
                   <Link href="/sign-in">Sign In</Link>
                 </Button>
-                <Button asChild>
+                <Button asChild size="sm" className="sm:h-10 sm:px-4">
                   <Link href="/sign-up">Get Started</Link>
                 </Button>
               </>

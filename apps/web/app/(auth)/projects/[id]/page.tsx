@@ -75,7 +75,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     <Tabs defaultValue="runs" className="space-y-4">
       <div className="space-y-4">
         <PageHeading>Runs</PageHeading>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <TabsList>
             <TabsTrigger value="runs">Runs</TabsTrigger>
             <TabsTrigger value="configs">Configs</TabsTrigger>
@@ -92,7 +92,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </div>
 
       <TabsContent value="runs" className="space-y-4">
-        <div className="rounded-lg border">
+        <div className="rounded-lg border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -117,20 +117,20 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <div className="flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">
                       <GitBranch className="size-3" />
                       <span className="max-w-[120px] truncate">
                         {run.branch}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground whitespace-nowrap">
                     {run.gpu}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={run.status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground whitespace-nowrap">
                     {run.createdAt}
                   </TableCell>
                 </TableRow>

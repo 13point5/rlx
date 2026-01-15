@@ -171,8 +171,8 @@ export function GpuSelection({
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Select GPU</h2>
-      <div className="h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
+      <h2 className="text-lg md:text-xl font-semibold">Select GPU</h2>
+      <div className="max-h-[600px] md:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
         {entries.map(([gpuType, counts]) => {
           const countsRecord = counts as Record<string, unknown>;
           const countEntries = Object.entries(countsRecord).filter(
