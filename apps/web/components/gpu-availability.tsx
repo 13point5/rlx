@@ -4,6 +4,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { getGpuAvailability } from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   ShieldCheckIcon,
   ServerIcon,
@@ -46,9 +47,16 @@ function getCountryFlag(countryCode: string): string {
 interface GpuAvailabilityProps {
   gpu?: string;
   count?: string;
+  selectedInstanceId?: string | null;
+  onSelectInstance?: (instanceId: string) => void;
 }
 
-export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
+export function GpuAvailability({
+  gpu,
+  count,
+  selectedInstanceId,
+  onSelectInstance,
+}: GpuAvailabilityProps) {
   const {
     data,
     isLoading,
@@ -161,15 +169,45 @@ export function GpuAvailability({ gpu, count }: GpuAvailabilityProps) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 max-h-[calc(70vh-100px)] overflow-y-auto pr-1">
-          {instances.map((instance, idx) => {
+        <div className="grid grid-cols-2 gap-4 h-[calc(100vh-260px)] overflow-y-auto pr-1">
+          {instances.map((instance, index) => {
             const price =
               instance.prices.onDemand ?? instance.prices.communityPrice;
+            const instanceId = [
+              instance.cloudId,
+              instance.provider,
+              instance.region,
+              instance.dataCenter,
+              instance.country,
+              instance.gpuType,
+              instance.gpuCount,
+              instance.security,
+              instance.isSpot ? "spot" : "ondemand",
+            ]
+              .filter(Boolean)
+              .join("-");
+            const instanceKey = `${instanceId}-${index}`;
+            const isSelected = instanceId === selectedInstanceId;
 
             return (
               <div
-                key={idx}
-                className="p-4 border border-border rounded-md bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                key={instanceKey}
+                className={cn(
+                  "p-4 border border-border/90 rounded-md bg-transparent transition-colors cursor-pointer",
+                  !isSelected && "hover:border-border hover:bg-accent/40",
+                  isSelected && "border-primary/70 bg-card"
+                )}
+                onClick={() => {
+                  console.log("Selected instance", {
+                    instanceId,
+                    provider: instance.provider,
+                    region: instance.region,
+                    gpuType: instance.gpuType,
+                    gpuCount: instance.gpuCount,
+                    index,
+                  });
+                  onSelectInstance?.(instanceId);
+                }}
               >
                 <div className="space-y-4">
                   {/* Header with GPU name and price */}

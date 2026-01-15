@@ -58,8 +58,9 @@ function GpuSummaryCard({
   return (
     <Card
       className={cn(
-        "p-3 gap-3 rounded-sm w-full cursor-pointer transition-colors hover:bg-accent/50",
-        isSelected && "border-primary"
+        "p-3 gap-3 rounded-sm w-full cursor-pointer border border-border/90 bg-transparent transition-colors",
+        !isSelected && "hover:border-border hover:bg-accent/40",
+        isSelected && "border-primary/70 bg-card"
       )}
       onClick={onClick}
     >
@@ -154,7 +155,7 @@ export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Select GPU</h2>
-      <div className="max-h-[60vh] overflow-y-auto space-y-4 pr-1">
+      <div className="h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
         {entries.map(([gpuType, counts]) => {
           const countsRecord = counts as Record<string, unknown>;
           const countEntries = Object.entries(countsRecord).filter(
