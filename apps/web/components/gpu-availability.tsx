@@ -229,10 +229,10 @@ export function GpuAvailability({
                     }}
                   >
                     <div className="space-y-4">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2 flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-base md:text-lg whitespace-nowrap">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-bold text-base md:text-lg break-words">
                               {formatGpuName(instance.gpuType)} x{instance.gpuCount}
                             </h3>
 
@@ -267,7 +267,7 @@ export function GpuAvailability({
                             </Badge>
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
+                        <div className="text-left lg:text-right lg:flex-shrink-0">
                           <p className="text-xs text-muted-foreground">
                             {getProviderDisplayName(instance.provider)}
                           </p>
@@ -280,7 +280,7 @@ export function GpuAvailability({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 md:gap-4">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <ServerIcon className="size-3 md:size-4" />

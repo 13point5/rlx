@@ -101,7 +101,7 @@ export function NewRunLayout({
         <div className="space-y-6">
           <div className="flex flex-col gap-4">
             <PageHeading>New Run</PageHeading>
-            <div className="flex w-full flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end">
               <RunFields
                 runName={runName}
                 branch={branch}
@@ -109,7 +109,7 @@ export function NewRunLayout({
                 onRunNameChange={setRunName}
                 onBranchChange={setBranch}
                 onConfigChange={setConfig}
-                className="md:w-auto"
+                className="lg:w-auto"
               />
               <div className="flex flex-col gap-2">
                 <Button
@@ -126,7 +126,7 @@ export function NewRunLayout({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 md:flex-row w-full">
+          <div className="flex flex-col gap-4 lg:flex-row w-full">
             {summaryResult.success && summaryResult.data ? (
               <GpuSelection
                 summary={summaryResult.data}

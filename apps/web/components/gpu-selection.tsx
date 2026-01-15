@@ -65,8 +65,8 @@ function GpuSummaryCard({
       )}
       onClick={onClick}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-4 px-0">
-        <CardTitle className="text-md font-semibold">{displayName}</CardTitle>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-3 px-0">
+        <CardTitle className="min-w-0 text-md font-semibold">{displayName}</CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {countEntries.length > 1 && (
             <Select value={selectedCount} onValueChange={onSelectCount}>
@@ -183,9 +183,9 @@ export function GpuSelection({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 md:block">
+      <div className="flex flex-wrap items-center gap-3 lg:block">
         <h2 className="text-lg md:text-xl font-semibold">Select GPU</h2>
-        <div className="md:hidden">
+        <div className="lg:hidden">
           <Select
             value={optimisticGpu}
             onValueChange={(gpuType) => {
@@ -218,7 +218,7 @@ export function GpuSelection({
           </Select>
         </div>
       </div>
-      <div className="space-y-4 md:hidden">
+      <div className="space-y-4 lg:hidden">
         {selectedCountsRecord && (
           <GpuSummaryCard
             gpuType={optimisticGpu}
@@ -251,7 +251,7 @@ export function GpuSelection({
           />
         )}
       </div>
-      <div className="hidden md:block max-h-[600px] md:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
+      <div className="hidden lg:block max-h-[600px] lg:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
         {entries.map(([gpuType, counts]) => {
           const countsRecord = counts as Record<string, unknown>;
           const countEntries = getCountEntries(countsRecord);
