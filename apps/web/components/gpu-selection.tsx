@@ -120,13 +120,14 @@ export function GpuSelection({
   const router = useRouter();
   const entries = useMemo(() => Object.entries(summary || {}), [summary]);
 
+  const getCountEntries = (countsRecord: Record<string, unknown>) =>
+    Object.entries(countsRecord).filter(([, value]) => typeof value === "object");
+
   // Get first GPU and count as defaults
   const firstGpuType = entries[0]?.[0];
   const firstGpuCounts = entries[0]?.[1] as Record<string, unknown>;
   const firstCountKey = firstGpuCounts
-    ? Object.entries(firstGpuCounts).filter(
-        ([, v]) => typeof v === "object"
-      )[0]?.[0]
+    ? getCountEntries(firstGpuCounts)[0]?.[0]
     : undefined;
 
   // Use props or defaults
@@ -150,16 +151,27 @@ export function GpuSelection({
   const optimisticGpu = isPendingSelection ? pendingSelection!.gpu : selectedGpuType;
   const optimisticCount = isPendingSelection ? pendingSelection!.count : selectedGpuCount;
 
+  const selectedEntry = entries.find(([gpuType]) => gpuType === optimisticGpu);
+  const selectedCountsRecord =
+    (selectedEntry?.[1] as Record<string, unknown> | undefined) ?? firstGpuCounts;
+  const selectedCountEntries = selectedCountsRecord
+    ? getCountEntries(selectedCountsRecord)
+    : [];
+  const selectedDefaultCount = selectedCountEntries[0]?.[0] || "";
+  const selectedEffectiveCount =
+    cardCounts[optimisticGpu] || optimisticCount || selectedDefaultCount;
+
   // Sync URL with default selection on mount (without navigation flash)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const hasGpuInUrl = params.has("gpu");
 
     if (!hasGpuInUrl && selectedGpuType && selectedGpuCount) {
-      router.replace(`?gpu=${selectedGpuType}&count=${selectedGpuCount}`, { scroll: false });
+      router.replace(`?gpu=${selectedGpuType}&count=${selectedGpuCount}`, {
+        scroll: false,
+      });
     }
   }, [selectedGpuType, selectedGpuCount, router]);
-
 
   if (!entries.length) {
     return (
@@ -171,13 +183,78 @@ export function GpuSelection({
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg md:text-xl font-semibold">Select GPU</h2>
-      <div className="max-h-[600px] md:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
+      <div className="flex flex-wrap items-center gap-3 md:block">
+        <h2 className="text-lg md:text-xl font-semibold">Select GPU</h2>
+        <div className="md:hidden">
+          <Select
+            value={optimisticGpu}
+            onValueChange={(gpuType) => {
+              const countsRecord = entries.find(([type]) => type === gpuType)?.[1] as
+                | Record<string, unknown>
+                | undefined;
+              const countEntries = countsRecord ? getCountEntries(countsRecord) : [];
+              const defaultCount = countEntries[0]?.[0] || "";
+              const effectiveCount = cardCounts[gpuType] || defaultCount;
+
+              setPendingSelection({ gpu: gpuType, count: effectiveCount });
+              onSelectionChange?.(gpuType, effectiveCount);
+              startTransition(() => {
+                router.push(`?gpu=${gpuType}&count=${effectiveCount}`, {
+                  scroll: false,
+                });
+              });
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select GPU" />
+            </SelectTrigger>
+            <SelectContent>
+              {entries.map(([gpuType]) => (
+                <SelectItem key={gpuType} value={gpuType}>
+                  {gpuType.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-4 md:hidden">
+        {selectedCountsRecord && (
+          <GpuSummaryCard
+            gpuType={optimisticGpu}
+            counts={selectedCountsRecord}
+            selectedCount={selectedEffectiveCount}
+            onSelectCount={(val) => {
+              setCardCounts((prev) => ({ ...prev, [optimisticGpu]: val }));
+              setPendingSelection({ gpu: optimisticGpu, count: val });
+              onSelectionChange?.(optimisticGpu, val);
+              startTransition(() => {
+                router.push(`?gpu=${optimisticGpu}&count=${val}`, {
+                  scroll: false,
+                });
+              });
+            }}
+            isSelected
+            onClick={() => {
+              setPendingSelection({
+                gpu: optimisticGpu,
+                count: selectedEffectiveCount,
+              });
+              onSelectionChange?.(optimisticGpu, selectedEffectiveCount);
+              startTransition(() => {
+                router.push(
+                  `?gpu=${optimisticGpu}&count=${selectedEffectiveCount}`,
+                  { scroll: false }
+                );
+              });
+            }}
+          />
+        )}
+      </div>
+      <div className="hidden md:block max-h-[600px] md:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
         {entries.map(([gpuType, counts]) => {
           const countsRecord = counts as Record<string, unknown>;
-          const countEntries = Object.entries(countsRecord).filter(
-            ([, value]) => typeof value === "object"
-          );
+          const countEntries = getCountEntries(countsRecord);
           const defaultCount = countEntries[0]?.[0] || "";
 
           // Use card-specific count if set, otherwise use URL count if this card is selected, otherwise use default
@@ -206,7 +283,9 @@ export function GpuSelection({
                 setPendingSelection({ gpu: gpuType, count: effectiveCount });
                 onSelectionChange?.(gpuType, effectiveCount);
                 startTransition(() => {
-                  router.push(`?gpu=${gpuType}&count=${effectiveCount}`, { scroll: false });
+                  router.push(`?gpu=${gpuType}&count=${effectiveCount}`, {
+                    scroll: false,
+                  });
                 });
               }}
             />
@@ -216,3 +295,4 @@ export function GpuSelection({
     </div>
   );
 }
+
