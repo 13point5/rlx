@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -22,6 +22,8 @@ function isPriceRecord(
 
 interface Props {
   summary: GpuSummaryData;
+  selectedGpu?: string;
+  selectedCount?: string;
 }
 
 type GpuSummaryCardProps = {
@@ -107,9 +109,8 @@ function GpuSummaryCard({
   );
 }
 
-export function GpuSelection({ summary }: Props) {
+export function GpuSelection({ summary, selectedGpu, selectedCount }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const entries = useMemo(() => Object.entries(summary || {}), [summary]);
 
   // Get first GPU and count as defaults
@@ -121,18 +122,15 @@ export function GpuSelection({ summary }: Props) {
       )[0]?.[0]
     : undefined;
 
-  // Read from URL or use defaults
-  const selectedGpuType = searchParams.get("gpu") || firstGpuType || "";
-  const selectedGpuCount = searchParams.get("count") || firstCountKey || "";
+  // Use props or defaults
+  const selectedGpuType = selectedGpu || firstGpuType || "";
+  const selectedGpuCount = selectedCount || firstCountKey || "";
 
   // Local state for each card's count selection
   const [cardCounts, setCardCounts] = useState<Record<string, string>>({});
 
   const updateUrl = (gpu: string, count: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("gpu", gpu);
-    params.set("count", count);
-    router.push(`?${params.toString()}`, { scroll: false });
+    router.push(`?gpu=${gpu}&count=${count}`, { scroll: false });
   };
 
   if (!entries.length) {

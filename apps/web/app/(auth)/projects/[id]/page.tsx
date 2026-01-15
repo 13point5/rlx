@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getProject } from "@/app/actions/api";
+import { getProject } from "@/lib/data";
 import { SettingsTab } from "./tabs/settings";
 
 // TODO: Replace with actual API call when runs API is implemented
