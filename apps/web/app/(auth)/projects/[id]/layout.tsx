@@ -3,12 +3,12 @@ import { notFound } from "next/navigation";
 import { ErrorState } from "@/components/error-state";
 import { ProjectHeading } from "@/components/project-heading";
 
-interface Props {
+interface ProjectLayoutProps {
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }
 
-export default async function ProjectLayout({ children, params }: Props) {
+export default async function ProjectLayout({ children, params }: ProjectLayoutProps) {
   const { id } = await params;
 
   // Get project data for the heading

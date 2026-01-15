@@ -12,7 +12,6 @@ import {
   ZapIcon,
   Loader2,
 } from "lucide-react";
-import type { GpuAvailabilityResponse } from "@/lib/types";
 
 function formatGpuName(gpuType: string): string {
   // Convert "H100_80GB" to "H100 80GB"
@@ -42,12 +41,6 @@ function getCountryFlag(countryCode: string): string {
     .split("")
     .map((char) => 127397 + char.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
-}
-
-function getSpinUpTimeColor(minutes: number): string {
-  if (minutes < 5) return "text-green-500";
-  if (minutes <= 10) return "text-yellow-500";
-  return "text-red-500";
 }
 
 interface GpuAvailabilityProps {

@@ -1,12 +1,12 @@
 import { DeleteProject } from "@/components/delete-project";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface Props {
+interface SettingsTabProps {
   projectId: number;
   projectName: string;
 }
 
-export const SettingsTab = ({ projectId, projectName }: Props) => {
+export const SettingsTab = ({ projectId, projectName }: SettingsTabProps) => {
   return (
     <Card>
       <CardHeader>

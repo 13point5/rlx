@@ -3,20 +3,20 @@ import { GpuSelection } from "@/components/gpu-selection";
 import { GpuAvailability } from "@/components/gpu-availability";
 import { QueryClient, dehydrate, HydrationBoundary } from "@tanstack/react-query";
 
-interface Props {
+interface NewRunPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: Promise<{ gpu?: string; count?: string }>;
 }
 
-export default async function NewRunPage({ searchParams }: Props) {
+export default async function NewRunPage({ searchParams }: NewRunPageProps) {
   const search = await searchParams;
 
   // Fetch GPU summary first to determine defaults
   const summaryResult = await getGpuSummary();
 
   // Get selected GPU from URL or use first available as default
-  let selectedGpu = typeof search.gpu === "string" ? search.gpu : undefined;
-  let selectedCount = typeof search.count === "string" ? search.count : undefined;
+  let selectedGpu = search.gpu;
+  let selectedCount = search.count;
 
   // If no GPU selected, use first available as default (no redirect)
   if (!selectedGpu && summaryResult.success && summaryResult.data) {

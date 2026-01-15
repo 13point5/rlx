@@ -47,11 +47,11 @@ const mockRuns = [
   },
 ];
 
-interface Props {
+interface ProjectPageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function ProjectPage({ params }: Props) {
+export default async function ProjectPage({ params }: ProjectPageProps) {
   const { id } = await params;
 
   const projectResult = await getProject(Number(id));
