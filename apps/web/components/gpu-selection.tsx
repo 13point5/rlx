@@ -59,7 +59,7 @@ function GpuSummaryCard({
   return (
     <Card
       className={cn(
-        "p-3 gap-3 rounded-sm w-full cursor-pointer border border-border/90 bg-transparent transition-colors",
+        "p-3 gap-3 rounded w-full cursor-pointer border border-border/90 bg-transparent transition-colors",
         !isSelected && "hover:border-border hover:bg-accent/40",
         isSelected && "border-primary/70 bg-card"
       )}
