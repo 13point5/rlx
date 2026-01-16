@@ -31,6 +31,13 @@ Commit + push after approval
 Checkpoint C: endpoint returns saved key metadata
 Commit + push after approval
 
+## Phase 2.5 — Verification
+- Configure AWS credentials and region
+- Call POST /api/ssh-keys with test keys
+- Confirm Prime Intellect key created + secret stored
+Checkpoint C2: end-to-end key upload verified
+Commit + push after approval
+
 ## Phase 3 — Pod Creation Update
 - Lookup user key in `create_run`
 - Include `sshKeyId` in pod payload

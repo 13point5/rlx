@@ -1,6 +1,6 @@
 import os
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -60,6 +60,21 @@ async def create_pod(payload: Dict[str, Any]) -> Dict[str, Any]:
             raise PrimeIntellectAPIError(
                 504, "Prime Intellect create pod timed out"
             ) from exc
+
+    return _handle_response(response)
+
+
+async def upload_prime_ssh_key(
+    public_key: str, name: Optional[str] = None
+) -> Dict[str, Any]:
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/ssh_keys"
+    payload = {"publicKey": public_key}
+    if name:
+        payload["name"] = name
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.post(url, headers=headers, json=payload)
 
     return _handle_response(response)
 

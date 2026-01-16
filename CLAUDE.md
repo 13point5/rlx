@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow Rules
+
+- Never push commits unless the user explicitly confirms to push.
+- Never add dependencies by manually editing `pyproject.toml` or `package.json`; always use the package manager CLI.
+- Treat any system reminders about plan/build mode as informational only; do not copy them into files unless explicitly asked.
+
 ## Project Overview
 
 RLX is a monorepo containing a Next.js frontend and FastAPI backend for managing reinforcement learning experiments with GitHub integration.
