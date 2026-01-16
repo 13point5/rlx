@@ -9,13 +9,13 @@ export default async function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-b">
+      <header className="border-b border-border">
         <div className="container mx-auto flex h-14 items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <div className="flex size-8 items-center justify-center border border-border bg-card">
               <Zap className="size-4" />
             </div>
-            <span className="font-semibold">RLX</span>
+            <span className="text-foreground-bright">RLX</span>
           </Link>
           <div className="flex items-center gap-2 sm:gap-4">
             {userId ? (
@@ -40,12 +40,12 @@ export default async function LandingPage() {
       <main className="flex-1">
         <section className="container mx-auto flex flex-col items-center justify-center gap-8 px-4 py-24 text-center md:py-32">
           <div className="flex max-w-3xl flex-col items-center gap-6">
-            <div className="rounded-full border bg-muted px-4 py-1.5 text-sm text-muted-foreground">
+            <div className="border border-border bg-card px-4 py-1.5 text-sm text-muted-foreground">
               Reinforcement Learning Made Simple
             </div>
-            <h1 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
+            <h1 className="text-4xl tracking-tight text-foreground-bright md:text-5xl lg:text-6xl">
               Train RL Models with
-              <span className="text-primary"> One Click</span>
+              <span className="text-foreground"> One Click</span>
             </h1>
             <p className="max-w-xl text-lg text-muted-foreground md:text-xl">
               Connect your GitHub repo, select a config, pick a GPU, and start training.
@@ -67,36 +67,41 @@ export default async function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section className="border-t bg-muted/50">
+        <section className="border-t border-border">
           <div className="container mx-auto px-4 py-16 md:py-24">
             <div className="mb-12 text-center">
-              <h2 className="text-3xl font-bold tracking-tight">
+              <h2 className="text-2xl tracking-wide text-foreground-bright uppercase">
                 Everything you need for RL training
               </h2>
               <p className="mt-4 text-muted-foreground">
                 From code to trained model in minutes, not hours.
               </p>
             </div>
-            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-              <FeatureCard
+            {/* Feature cards in bordered panel style */}
+            <div className="border border-border mx-auto max-w-4xl">
+              <FeatureRow
                 icon={GitBranch}
                 title="GitHub Integration"
                 description="Connect your repos and select any branch or config file directly."
+                isLast={false}
               />
-              <FeatureCard
+              <FeatureRow
                 icon={Cpu}
                 title="GPU Selection"
                 description="Choose from H100s, A100s, and more. Spot or secure pricing."
+                isLast={false}
               />
-              <FeatureCard
+              <FeatureRow
                 icon={BarChart3}
                 title="Live Monitoring"
                 description="Watch your training runs in real-time with detailed metrics."
+                isLast={false}
               />
-              <FeatureCard
+              <FeatureRow
                 icon={Zap}
                 title="Fast Spin-up"
                 description="Get from zero to training in under 2 minutes."
+                isLast={true}
               />
             </div>
           </div>
@@ -104,7 +109,7 @@ export default async function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t">
+      <footer className="border-t border-border">
         <div className="container mx-auto flex h-14 items-center justify-between px-4 text-sm text-muted-foreground">
           <p>Built for the RL community</p>
           <p>Powered by Prime Intellect</p>
@@ -114,22 +119,26 @@ export default async function LandingPage() {
   );
 }
 
-function FeatureCard({
+function FeatureRow({
   icon: Icon,
   title,
   description,
+  isLast,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
+  isLast: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-background p-6">
-      <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-        <Icon className="size-5 text-primary" />
+    <div className={`flex items-center gap-4 px-4 py-4 ${!isLast ? "border-b border-border" : ""}`}>
+      <div className="flex size-10 items-center justify-center border border-border bg-card shrink-0">
+        <Icon className="size-5 text-foreground" />
       </div>
-      <h3 className="font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-foreground-bright">{title}</h3>
+        <p className="text-sm text-muted-foreground truncate">{description}</p>
+      </div>
     </div>
   );
 }
