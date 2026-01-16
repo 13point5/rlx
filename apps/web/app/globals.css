@@ -51,7 +51,7 @@
 }
 
 :root {
-  --radius: 0.25rem;  /* 4px - subtle but noticeable rounding */
+  --radius: 0.1875rem;  /* 3px */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --foreground-bright: oklch(0 0 0);
