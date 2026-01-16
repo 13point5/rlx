@@ -92,7 +92,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </div>
 
       <TabsContent value="runs" className="space-y-4">
-        <div className="rounded-lg border overflow-x-auto">
+        <div className="border border-border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -162,15 +162,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
-    running: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    completed: "bg-green-500/10 text-green-500 border-green-500/20",
-    failed: "bg-red-500/10 text-red-500 border-red-500/20",
-    pending: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    running: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+    completed: "bg-green-500/10 text-green-500 border-green-500/30",
+    failed: "bg-red-500/10 text-red-500 border-red-500/30",
+    pending: "bg-muted text-muted-foreground border-border",
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${
+      className={`inline-flex items-center border px-2 py-0.5 text-xs capitalize ${
         colors[status as keyof typeof colors] ?? colors.pending
       }`}
     >

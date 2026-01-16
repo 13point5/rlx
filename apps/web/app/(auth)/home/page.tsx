@@ -41,11 +41,15 @@ export default async function HomePage() {
           </Button>
         </div>
 
-        {/* Projects Grid */}
+        {/* Projects List - Okiro bordered panel style */}
         {hasProjects ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
+          <div className="border border-border">
+            {projects.map((project, index) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                isLast={index === projects.length - 1}
+              />
             ))}
           </div>
         ) : (
