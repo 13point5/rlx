@@ -126,6 +126,21 @@ class Run(Base):
     )
 
 
+class UserSshKey(Base):
+    __tablename__ = "user_ssh_keys"
+
+    id = Column(Integer, primary_key=True)
+    clerk_user_id = Column(String, nullable=False, index=True)
+    public_key = Column(String, nullable=False)
+    prime_ssh_key_id = Column(String, nullable=False)
+    aws_secret_arn = Column(String, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (UniqueConstraint("clerk_user_id", name="unique_user_ssh_key"),)
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency that provides a database session."""
     if async_session is None:
