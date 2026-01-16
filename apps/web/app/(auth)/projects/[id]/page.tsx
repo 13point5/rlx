@@ -92,7 +92,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </div>
 
       <TabsContent value="runs" className="space-y-4">
-        <div className="border border-border overflow-x-auto">
+        <div className="border border-border overflow-hidden rounded">
           <Table>
             <TableHeader>
               <TableRow>

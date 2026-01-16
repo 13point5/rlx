@@ -43,7 +43,7 @@ export default async function HomePage() {
 
         {/* Projects List - Okiro bordered panel style */}
         {hasProjects ? (
-          <div className="border border-border">
+          <div className="border border-border rounded overflow-hidden">
             {projects.map((project, index) => (
               <ProjectCard
                 key={project.id}
