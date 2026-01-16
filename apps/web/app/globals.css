@@ -51,7 +51,7 @@
 }
 
 :root {
-  --radius: 0;  /* Sharp corners - Okiro style */
+  --radius: 0.125rem;  /* 2px - subtle rounding, barely noticeable */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --foreground-bright: oklch(0 0 0);
