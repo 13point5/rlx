@@ -67,15 +67,15 @@ class RunStatusResponse(BaseModel):
     ip: str | None = None
 
 
-class RunStatusErrorResponse(BaseModel):
-    message: str
-    last_known_status: str
-    last_updated_at: datetime | None = None
-
-
 class RunTerminateResponse(BaseModel):
     status: str
     pod_id: str
+
+
+class RunStatusItem(BaseModel):
+    status: str
+    ssh_connection: str | None = None
+    ip: str | None = None
 
 
 async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
@@ -174,6 +174,99 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     await db.refresh(run)
 
     return run
+
+
+@router.get("", response_model=list[RunResponse])
+async def list_runs(user: CurrentUser, db: DbSession, project_id: int | None = None):
+    clerk_user_id = user.get("sub")
+    query = select(Run).where(Run.clerk_user_id == clerk_user_id)
+
+    if project_id is not None:
+        query = query.where(Run.project_id == project_id)
+
+    result = await db.execute(query.order_by(Run.created_at.desc()))
+    return list(result.scalars().all())
+
+
+@router.get("/status", response_model=dict[int, RunStatusItem])
+async def get_runs_status(
+    user: CurrentUser,
+    db: DbSession,
+    run_ids: list[int] | None = None,
+):
+    clerk_user_id = user.get("sub")
+    if not run_ids:
+        return {}
+
+    result = await db.execute(
+        select(Run).where(Run.clerk_user_id == clerk_user_id, Run.id.in_(run_ids))
+    )
+    runs = list(result.scalars().all())
+
+    if not runs:
+        return {}
+
+    pod_ids = [run.pod_id for run in runs]
+
+    try:
+        status_payload = await fetch_pod_status(pod_ids)
+    except PrimeIntellectAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    status_entries: list[dict[str, Any]] = []
+
+    if isinstance(status_payload, dict):
+        data = status_payload.get("data")
+        if isinstance(data, list):
+            status_entries = data
+        else:
+            status_entries = [status_payload]
+    elif isinstance(status_payload, list):
+        status_entries = status_payload
+
+    if not status_entries:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Prime Intellect did not return pod status",
+        )
+
+    status_map = {
+        entry.get("podId") or entry.get("pod_id"): entry for entry in status_entries
+    }
+
+    response: dict[int, RunStatusItem] = {}
+
+    for run in runs:
+        if run.status == "TERMINATED":
+            response[run.id] = RunStatusItem(
+                status=run.status, ssh_connection=None, ip=None
+            )
+            continue
+
+        status_data = status_map.get(run.pod_id)
+        if not status_data:
+            response[run.id] = RunStatusItem(
+                status=run.status, ssh_connection=None, ip=None
+            )
+            continue
+        status_value = status_data.get("status") or run.status
+        ssh_connection = status_data.get("sshConnection") or status_data.get(
+            "ssh_connection"
+        )
+        ip_address = status_data.get("ip")
+
+        run.status = status_value
+        run.updated_at = datetime.now(timezone.utc)
+
+        response[run.id] = RunStatusItem(
+            status=status_value,
+            ssh_connection=ssh_connection,
+            ip=ip_address,
+        )
+
+    await db.commit()
+
+    return response
 
 
 @router.get("/{run_id}", response_model=RunResponse)

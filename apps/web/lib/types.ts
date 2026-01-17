@@ -124,7 +124,16 @@ export interface RunRecord {
   cloud_id: string;
   created_at: string;
   updated_at: string | null;
+  is_spot?: boolean;
 }
+
+export interface RunStatusItem {
+  status: string;
+  ssh_connection: string | null;
+  ip: string | null;
+}
+
+export type RunStatusBatchResponse = Record<string, RunStatusItem>;
 
 export interface RunStatusResponse {
   status: string;
