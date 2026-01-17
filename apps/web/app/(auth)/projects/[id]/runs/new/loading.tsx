@@ -3,18 +3,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function GpuCardSkeleton() {
   return (
-    <div className="p-3 rounded-sm border space-y-3">
+    <div className="p-3 rounded-none border space-y-3">
       <div className="flex items-center justify-between">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-8 w-20" />
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Skeleton className="size-3 rounded-full" />
+          <Skeleton className="size-3 rounded-none" />
           <Skeleton className="h-4 w-16" />
         </div>
         <div className="flex items-center gap-2">
-          <Skeleton className="size-3 rounded-full" />
+          <Skeleton className="size-3 rounded-none" />
           <Skeleton className="h-4 w-16" />
         </div>
       </div>
@@ -24,7 +24,7 @@ function GpuCardSkeleton() {
 
 function InstanceCardSkeleton() {
   return (
-    <div className="p-4 border rounded-md space-y-4">
+    <div className="p-4 border rounded-none space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-2">
@@ -33,9 +33,9 @@ function InstanceCardSkeleton() {
             <Skeleton className="h-4 w-20" />
           </div>
           <div className="flex gap-2">
-            <Skeleton className="h-5 w-14 rounded-full" />
-            <Skeleton className="h-5 w-12 rounded-full" />
-            <Skeleton className="h-5 w-24 rounded-full" />
+            <Skeleton className="h-5 w-14 rounded-none" />
+            <Skeleton className="h-5 w-12 rounded-none" />
+            <Skeleton className="h-5 w-24 rounded-none" />
           </div>
         </div>
         <div className="text-right space-y-1">

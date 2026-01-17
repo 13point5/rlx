@@ -8,7 +8,13 @@ interface PageHeadingProps {
 
 export function PageHeading({ children, className }: PageHeadingProps) {
   return (
-    <h1 className={cn("text-2xl md:text-3xl font-bold", className)} data-slot="page-heading">
+    <h1
+      className={cn(
+        "text-foreground-bright text-xl font-semibold uppercase tracking-wide",
+        className
+      )}
+      data-slot="page-heading"
+    >
       {children}
     </h1>
   );

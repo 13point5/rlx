@@ -10,7 +10,7 @@ export default function ProjectLoading() {
       </div>
 
       {/* Runs table */}
-      <div className="rounded-lg border">
+      <div className="rounded-none border">
         <div className="p-4">
           {/* Table header */}
           <div className="flex gap-8 pb-3 border-b">
@@ -32,7 +32,7 @@ export default function ProjectLoading() {
                 <Skeleton className="h-4 w-20" />
               </div>
               <Skeleton className="h-4 w-12" />
-              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-20 rounded-none" />
               <Skeleton className="h-4 w-20" />
             </div>
           ))}

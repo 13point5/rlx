@@ -49,7 +49,7 @@ export function AppHeader({
           <div className="flex items-center text-sm">
             <span className="mx-2 text-muted-foreground/50">/</span>
             <div className="flex items-center gap-2">
-              <Skeleton className="size-4 rounded-sm" />
+              <Skeleton className="size-4 rounded-none" />
               <Skeleton className="h-4 w-24" />
             </div>
           </div>
@@ -180,7 +180,8 @@ export function AppHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 rounded-full"
+                    className="size-8 rounded-none"
+
                 >
                   <Avatar className="size-7">
                     <AvatarImage

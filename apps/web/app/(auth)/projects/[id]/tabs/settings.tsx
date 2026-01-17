@@ -14,21 +14,20 @@ export const SettingsTab = ({ projectId, projectName }: SettingsTabProps) => {
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          <div className="rounded-lg border border-destructive/50">
-            <div className="space-y-2 p-4">
-              <h3 className="text-lg font-semibold">Delete Project</h3>
-              <p className="text-sm text-muted-foreground">
-                Permanently delete this project and all deployments, domains,
-                environment variables, serverless functions, and settings.
-              </p>
+            <div className="rounded-none border border-destructive/50">
+              <div className="space-y-2 p-4 text-xs">
+                <h3 className="text-sm font-semibold uppercase tracking-wide">Delete Project</h3>
+                <p className="text-muted-foreground">
+                  Permanently delete this project and all deployments, domains,
+                  environment variables, serverless functions, and settings.
+                </p>
+              </div>
+              <div className="flex flex-col gap-4 border-t border-destructive/40 bg-destructive/10 p-4 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-destructive">This action cannot be undone.</p>
+                <DeleteProject projectId={projectId} projectName={projectName} />
+              </div>
             </div>
-            <div className="flex flex-col gap-4 border-t border-destructive/40 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-destructive">
-                This action cannot be undone.
-              </p>
-              <DeleteProject projectId={projectId} projectName={projectName} />
-            </div>
-          </div>
+
         </div>
       </CardContent>
     </Card>

@@ -11,8 +11,8 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, description, actionLabel, actionHref }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center md:p-12">
-      <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+    <div className="flex flex-col items-center justify-center rounded-none border border-dashed p-8 text-center md:p-12">
+      <div className="flex size-12 items-center justify-center rounded-none bg-muted">
         <FolderKanban className="size-6 text-muted-foreground" />
       </div>
       <h3 className="mt-4 text-lg font-semibold">{title}</h3>
