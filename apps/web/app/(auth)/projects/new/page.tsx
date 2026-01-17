@@ -126,7 +126,7 @@ export default function NewProjectPage() {
 
         {/* Error Message */}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <div className="flex items-center gap-2 rounded-none border border-destructive/50 bg-destructive/10 px-4 py-3 text-xs text-destructive">
             <AlertCircle className="size-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -177,7 +177,7 @@ export default function NewProjectPage() {
         </div>
 
         {/* Repos List */}
-        <div className="rounded-lg border">
+        <div className="rounded-none border">
           {isLoadingRepos && repos.length === 0 ? (
             <div className="divide-y">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -186,7 +186,7 @@ export default function NewProjectPage() {
                   className="flex items-center justify-between px-4 py-3"
                 >
                   <div className="flex items-center gap-3">
-                    <Skeleton className="size-6 rounded-full" />
+                    <Skeleton className="size-6 rounded-none" />
                     <div className="flex items-center gap-2">
                       <Skeleton className="h-4 w-32" />
                       <Skeleton className="h-4 w-16" />
@@ -218,7 +218,7 @@ export default function NewProjectPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{repo.name}</span>
                         {repo.private && (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                          <span className="rounded-none bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                             Private
                           </span>
                         )}

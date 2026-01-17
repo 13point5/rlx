@@ -11,8 +11,8 @@ interface LabeledFieldProps {
 
 export function LabeledField({ label, htmlFor, className, children }: LabeledFieldProps) {
   return (
-    <div className={cn("space-y-2", className)} data-slot="labeled-field">
-      <Label htmlFor={htmlFor} className="text-sm font-medium">
+    <div className={cn("space-y-1", className)} data-slot="labeled-field">
+      <Label htmlFor={htmlFor} className="text-xs font-medium">
         {label}
       </Label>
       {children}

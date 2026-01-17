@@ -92,7 +92,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </div>
 
       <TabsContent value="runs" className="space-y-4">
-        <div className="border border-border overflow-hidden rounded">
+        <div className="border border-border overflow-hidden rounded-none">
           <Table>
             <TableHeader>
               <TableRow>
@@ -141,7 +141,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </TabsContent>
 
       <TabsContent value="configs">
-        <Card>
+        <Card size="sm">
           <CardHeader>
             <CardTitle>Config Files</CardTitle>
           </CardHeader>
@@ -170,7 +170,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center border px-2 py-0.5 text-xs capitalize ${
+      className={`inline-flex items-center rounded-none border px-2 py-0.5 text-xs capitalize ${
         colors[status as keyof typeof colors] ?? colors.pending
       }`}
     >

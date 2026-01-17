@@ -79,7 +79,7 @@ export function DeleteProject({ projectId, projectName }: DeleteProjectProps) {
         </AlertDialogHeader>
 
         {error && (
-          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="rounded-none bg-destructive/10 p-3 text-xs text-destructive">
             {error}
           </div>
         )}

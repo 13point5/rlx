@@ -12,7 +12,7 @@ export function ProjectCard({ project }: { project: Project }) {
 
   return (
     <Link href={`/projects/${project.id}`}>
-      <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-accent/50 hover:bg-accent/20">
+      <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-accent/50 hover:bg-accent/20" size="sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <GitHubAvatar
@@ -39,16 +39,17 @@ export function ProjectCard({ project }: { project: Project }) {
         </div>
 
         <div>
-          {project.active_runs > 0 ? (
-            <span className="inline-flex items-center rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-500">
-              {project.active_runs} active run
-              {project.active_runs > 1 ? "s" : ""}
-            </span>
-          ) : (
-            <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-              No active runs
-            </span>
-          )}
+            {project.active_runs > 0 ? (
+              <span className="inline-flex items-center rounded-none border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-500">
+                {project.active_runs} active run
+                {project.active_runs > 1 ? "s" : ""}
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-none border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                No active runs
+              </span>
+            )}
+
         </div>
       </Card>
     </Link>
@@ -60,13 +61,13 @@ export function ProjectCardSkeleton() {
     <Card className="flex flex-col gap-2 p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Skeleton className="size-4 rounded-full" />
+          <Skeleton className="size-4 rounded-none" />
           <Skeleton className="h-4 w-20" />
         </div>
         <Skeleton className="size-4" />
       </div>
       <Skeleton className="h-5 w-32" />
-      <Skeleton className="h-5 w-24 rounded-full" />
+      <Skeleton className="h-5 w-24 rounded-none" />
     </Card>
   );
 }

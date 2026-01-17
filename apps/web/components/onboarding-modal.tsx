@@ -56,7 +56,7 @@ export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
           <div className="space-y-6 py-4">
             <div className="space-y-4">
               <div className="flex items-start gap-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                <div className="flex size-8 items-center justify-center rounded-none bg-primary/10 text-primary font-semibold">
                   1
                 </div>
                 <div>
@@ -67,7 +67,7 @@ export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                <div className="flex size-8 items-center justify-center rounded-none bg-primary/10 text-primary font-semibold">
                   2
                 </div>
                 <div>
@@ -78,7 +78,7 @@ export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                <div className="flex size-8 items-center justify-center rounded-none bg-primary/10 text-primary font-semibold">
                   3
                 </div>
                 <div>
