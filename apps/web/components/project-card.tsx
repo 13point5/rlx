@@ -14,7 +14,7 @@ export function ProjectCard({ project }: { project: Project }) {
     <Link href={`/projects/${project.id}`}>
       <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-accent/50 hover:bg-accent/20" size="sm">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <GitHubAvatar
               username={project.repo_owner}
               avatarUrl={`https://github.com/${project.repo_owner}.png`}
@@ -34,22 +34,22 @@ export function ProjectCard({ project }: { project: Project }) {
           </span>
         </div>
 
-        <div className="truncate font-semibold text-foreground-bright">
-          {project.repo_name}
-        </div>
-
-        <div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 truncate text-lg font-semibold text-foreground-bright">
+            {project.repo_name}
+          </div>
+          <div className="flex shrink-0 justify-end text-right">
             {project.active_runs > 0 ? (
-              <span className="inline-flex items-center rounded-none border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-500">
+              <span className="inline-flex items-center whitespace-nowrap rounded-none border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-500">
                 {project.active_runs} active run
                 {project.active_runs > 1 ? "s" : ""}
               </span>
             ) : (
-              <span className="inline-flex items-center rounded-none border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center whitespace-nowrap rounded-none border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                 No active runs
               </span>
             )}
-
+          </div>
         </div>
       </Card>
     </Link>
@@ -62,12 +62,14 @@ export function ProjectCardSkeleton() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Skeleton className="size-4 rounded-none" />
-          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-3 w-24" />
         </div>
         <Skeleton className="size-4" />
       </div>
-      <Skeleton className="h-5 w-32" />
-      <Skeleton className="h-5 w-24 rounded-none" />
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-5 w-24 rounded-none" />
+      </div>
     </Card>
   );
 }
