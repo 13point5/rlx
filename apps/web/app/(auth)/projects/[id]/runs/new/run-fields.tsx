@@ -29,7 +29,13 @@ export function RunFields({
   className,
 }: RunFieldsProps) {
   return (
-    <div className={cn("grid w-full gap-4 sm:grid-cols-2 xl:grid-cols-3", className)} data-slot="run-fields">
+    <div
+      className={cn(
+        "grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3",
+        className
+      )}
+      data-slot="run-fields"
+    >
       <LabeledField label="Run name" htmlFor="run-name" className="min-w-0">
         <Input
           id="run-name"

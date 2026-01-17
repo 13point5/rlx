@@ -109,9 +109,9 @@ export function NewRunLayout({
                 onRunNameChange={setRunName}
                 onBranchChange={setBranch}
                 onConfigChange={setConfig}
-                className="lg:w-auto"
+                className="lg:flex-1"
               />
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 lg:w-[140px]">
                 <Button
                   className="w-full md:w-auto"
                   disabled={!effectiveSelectedInstance || isStarting}

@@ -5,8 +5,8 @@ export default function ProjectLoading() {
     <div className="space-y-4">
       {/* Tabs and New Run button */}
       <div className="flex items-center gap-4">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-10 w-28" />
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-8 w-28" />
       </div>
 
       {/* Runs table */}

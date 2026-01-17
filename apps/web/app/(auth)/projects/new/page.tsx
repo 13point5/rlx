@@ -192,7 +192,7 @@ export default function NewProjectPage() {
                       <Skeleton className="h-4 w-16" />
                     </div>
                   </div>
-                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-7 w-16" />
                 </div>
               ))}
             </div>
