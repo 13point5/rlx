@@ -131,3 +131,14 @@ export interface RunStatusResponse {
   ssh_connection: string | null;
   ip: string | null;
 }
+
+export interface RunStatusErrorPayload {
+  message: string;
+  last_known_status: string;
+  last_updated_at: string | null;
+}
+
+export interface RunTerminateResponse {
+  status: string;
+  pod_id: string;
+}

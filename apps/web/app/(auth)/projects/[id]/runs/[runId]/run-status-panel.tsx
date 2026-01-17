@@ -1,11 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { getRunStatus } from "@/app/actions/api";
+import { useMemo, useState, useTransition } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getRunStatus, terminateRun } from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { RunStatusResponse } from "@/lib/types";
+import type { RunStatusErrorPayload, RunStatusResponse } from "@/lib/types";
 
 interface RunStatusPanelProps {
   runId: number;
@@ -22,6 +24,11 @@ const statusStyles: Record<string, string> = {
 };
 
 export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
+  const queryClient = useQueryClient();
+  const [terminateError, setTerminateError] = useState<string | null>(null);
+  const [overrideStatus, setOverrideStatus] = useState<string | null>(null);
+  const [isTerminating, startTerminate] = useTransition();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["run-status", runId],
     queryFn: async () => {
@@ -31,16 +38,33 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
       }
       return response.status as RunStatusResponse;
     },
+    enabled: overrideStatus !== "TERMINATED",
     refetchInterval: (query) => {
       const currentStatus = (query.state.data as RunStatusResponse | undefined)?.status;
-      if (!currentStatus) {
-        return 5000;
+      if (currentStatus === "TERMINATED") {
+        return false;
       }
-      return currentStatus === "TERMINATED" ? false : 5000;
+
+      if (query.state.error) {
+        try {
+          const parsed = JSON.parse((query.state.error as Error).message) as RunStatusErrorPayload;
+          if (parsed?.last_known_status === "TERMINATED") {
+            return false;
+          }
+        } catch (parseError) {
+          return 5000;
+        }
+      }
+
+      if (initialStatus === "TERMINATED") {
+        return false;
+      }
+
+      return 5000;
     },
   });
 
-  const status = data?.status ?? initialStatus;
+  const status = overrideStatus ?? data?.status ?? initialStatus;
   const sshConnection = data?.ssh_connection ?? null;
   const statusClass = statusStyles[status] ?? statusStyles.PENDING;
   const sshMessage = sshConnection
@@ -49,19 +73,78 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
       ? "Instance terminated"
       : "Waiting for SSH access...";
 
+  const errorPayload = useMemo<RunStatusErrorPayload | null>(() => {
+    if (!error) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse((error as Error).message) as RunStatusErrorPayload;
+      if (parsed && parsed.message && parsed.last_known_status) {
+        return parsed;
+      }
+    } catch (parseError) {
+      return null;
+    }
+
+    return null;
+  }, [error]);
+
+  const errorMessage = errorPayload?.message || (error as Error | null)?.message;
+  const lastKnownStatus = errorPayload?.last_known_status;
+  const lastUpdatedAt = errorPayload?.last_updated_at;
+
+  const lastUpdatedLabel = lastUpdatedAt
+    ? new Date(lastUpdatedAt).toLocaleString()
+    : "Unknown time";
+
+  const handleTerminate = () => {
+    setTerminateError(null);
+
+    startTerminate(async () => {
+      const result = await terminateRun(runId);
+
+      if (!result.success || !result.status) {
+        setTerminateError(result.error ?? "Failed to terminate run");
+        return;
+      }
+
+      setOverrideStatus(result.status.status);
+      await queryClient.invalidateQueries({ queryKey: ["run-status", runId] });
+    });
+  };
+
+  const isTerminated = status === "TERMINATED";
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle>Status</CardTitle>
-        <Badge variant="outline" className={cn("capitalize", statusClass)}>
-          {isLoading ? "Loading" : status.toLowerCase()}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className={cn("capitalize", statusClass)}>
+            {isLoading ? "Loading" : status.toLowerCase()}
+          </Badge>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isTerminated || isTerminating}
+            onClick={handleTerminate}
+          >
+            {isTerminating ? "Terminating..." : "Terminate"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {error && (
-          <p className="text-sm text-destructive">
-            {(error as Error).message || "Failed to load status"}
-          </p>
+        {(errorMessage || terminateError) && (
+          <div className="space-y-1 text-sm text-destructive">
+            {errorMessage && <p>{errorMessage}</p>}
+            {terminateError && <p>{terminateError}</p>}
+            {lastKnownStatus && (
+              <p className="text-muted-foreground">
+                Last known status: {lastKnownStatus} ({lastUpdatedLabel})
+              </p>
+            )}
+          </div>
         )}
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">SSH Terminal</p>

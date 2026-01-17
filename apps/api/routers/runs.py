@@ -11,6 +11,7 @@ from services.prime_intellect import (
     DEFAULT_IMAGE,
     PrimeIntellectAPIError,
     create_pod,
+    delete_pod,
     fetch_pod_status,
 )
 
@@ -64,6 +65,17 @@ class RunStatusResponse(BaseModel):
     status: str
     ssh_connection: str | None = None
     ip: str | None = None
+
+
+class RunStatusErrorResponse(BaseModel):
+    message: str
+    last_known_status: str
+    last_updated_at: datetime | None = None
+
+
+class RunTerminateResponse(BaseModel):
+    status: str
+    pod_id: str
 
 
 async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
@@ -192,20 +204,41 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     clerk_user_id = user.get("sub")
     run = await get_run_or_404(run_id, clerk_user_id, db)
 
+    if run.status == "TERMINATED":
+        return RunStatusResponse(status=run.status, ssh_connection=None, ip=None)
+
+    def _raise_prime_error(message: str, status_code: int) -> None:
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "message": message,
+                "last_known_status": run.status,
+                "last_updated_at": run.updated_at.isoformat()
+                if run.updated_at
+                else None,
+            },
+        )
+
     try:
         status_payload = await fetch_pod_status([run.pod_id])
     except PrimeIntellectAPIError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+        _raise_prime_error(exc.message, exc.status_code)
 
     status_data = _extract_status_payload(status_payload)
 
     if not status_data:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Prime Intellect did not return pod status",
+        _raise_prime_error(
+            "Prime Intellect did not return pod status",
+            status.HTTP_502_BAD_GATEWAY,
         )
 
-    status_value = status_data.get("status", "UNKNOWN")
+    status_value = status_data.get("status")
+    if not status_value:
+        _raise_prime_error(
+            "Prime Intellect did not return status",
+            status.HTTP_502_BAD_GATEWAY,
+        )
+
     ssh_connection = status_data.get("sshConnection") or status_data.get(
         "ssh_connection"
     )
@@ -220,3 +253,20 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
         ssh_connection=ssh_connection,
         ip=ip_address,
     )
+
+
+@router.post("/{run_id}/terminate", response_model=RunTerminateResponse)
+async def terminate_run(run_id: int, user: CurrentUser, db: DbSession):
+    clerk_user_id = user.get("sub")
+    run = await get_run_or_404(run_id, clerk_user_id, db)
+
+    try:
+        await delete_pod(run.pod_id)
+    except PrimeIntellectAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    run.status = "TERMINATED"
+    run.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return RunTerminateResponse(status=run.status, pod_id=run.pod_id)

@@ -89,6 +89,16 @@ async def fetch_pod_status(pod_ids: List[str]) -> Dict[str, Any]:
     return _handle_response(response)
 
 
+async def delete_pod(pod_id: str) -> Dict[str, Any]:
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/pods/{pod_id}"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.delete(url, headers=headers)
+
+    return _handle_response(response)
+
+
 def _handle_response(response: httpx.Response) -> Dict[str, Any]:
     if response.status_code >= 400:
         try:

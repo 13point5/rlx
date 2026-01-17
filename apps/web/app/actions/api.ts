@@ -11,6 +11,7 @@ import type {
   RunInstanceSelection,
   RunRecord,
   RunStatusResponse,
+  RunTerminateResponse,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
@@ -772,6 +773,59 @@ export async function getRunStatus(runId: number): Promise<{
     return { success: true, status: response.data };
   } catch (error) {
     console.error("Error fetching run status:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      if (detail && typeof detail === "object") {
+        return {
+          success: false,
+          error: JSON.stringify(detail),
+        };
+      }
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function terminateRun(runId: number): Promise<{
+  success: boolean;
+  status?: RunTerminateResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/runs/${runId}/terminate`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return { success: true, status: response.data };
+  } catch (error) {
+    console.error("Error terminating run:", error);
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;
