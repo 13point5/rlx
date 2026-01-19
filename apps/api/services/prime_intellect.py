@@ -86,11 +86,24 @@ async def upload_prime_ssh_key(
     return _handle_response(response)
 
 
+async def list_prime_ssh_keys(limit: int = 100) -> Dict[str, Any]:
+    """List SSH keys from Prime Intellect."""
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/ssh_keys"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.get(url, headers=headers, params={"limit": limit})
+
+    logger.info(f"Listing SSH keys from Prime Intellect: status={response.status_code}")
+    return _handle_response(response)
+
+
 async def delete_prime_ssh_key(key_id: str) -> Dict[str, Any]:
     """Delete an SSH key from Prime Intellect."""
     headers = await _get_headers()
     url = f"{BASE_URL}/api/v1/ssh_keys/{key_id}"
 
+    logger.info(f"Deleting SSH key {key_id} from Prime Intellect")
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         response = await client.delete(url, headers=headers)
 

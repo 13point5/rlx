@@ -17,6 +17,7 @@ from services.prime_intellect import (
     PrimeIntellectAPIError,
     upload_prime_ssh_key,
     delete_prime_ssh_key,
+    list_prime_ssh_keys,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,33 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
         public_key=ssh_key.public_key,
         created_at=ssh_key.created_at,
     )
+
+
+@router.get("/list-prime-keys", response_model=dict)
+async def list_prime_keys(user: CurrentUser) -> dict:
+    """List all SSH keys from Prime Intellect (for debugging/cleanup)."""
+    try:
+        result = await list_prime_ssh_keys()
+        keys = result.get("data", [])
+        logger.info(f"Found {len(keys)} SSH keys in Prime Intellect")
+        return {
+            "keys": keys,
+            "total_count": result.get("total_count", len(keys)),
+        }
+    except PrimeIntellectAPIError as exc:
+        logger.error(f"Failed to list Prime Intellect keys: {exc.message}")
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.delete("/prime/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_prime_key(key_id: str, user: CurrentUser) -> None:
+    """Delete an SSH key directly from Prime Intellect (for cleanup)."""
+    try:
+        await delete_prime_ssh_key(key_id)
+        logger.info(f"Deleted SSH key {key_id} from Prime Intellect")
+    except PrimeIntellectAPIError as exc:
+        logger.error(f"Failed to delete Prime Intellect key {key_id}: {exc.message}")
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
