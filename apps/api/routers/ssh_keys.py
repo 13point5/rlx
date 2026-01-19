@@ -16,7 +16,6 @@ from services.prime_intellect import (
     PrimeIntellectAPIError,
     upload_prime_ssh_key,
     delete_prime_ssh_key,
-    list_prime_ssh_keys,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +33,7 @@ class SshKeyResponse(BaseModel):
     id: int
     public_key: str
     prime_ssh_key_id: str
+    aws_secret_arn: str
     created_at: datetime
 
     class Config:
@@ -43,6 +43,7 @@ class SshKeyResponse(BaseModel):
 class SshKeyStatusResponse(BaseModel):
     configured: bool
     keys: list[SshKeyResponse] = []
+    aws_region: str | None = None
 
 
 @router.get("", response_model=SshKeyStatusResponse)
@@ -59,70 +60,20 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
 
     # Log secret ARNs for debugging
     for key in ssh_keys:
-        logger.info(f"User {clerk_user_id} has key {key.id} with AWS secret ARN: {key.aws_secret_arn}")
+        logger.info(
+            f"User {clerk_user_id} has key {key.id} with AWS secret ARN: {key.aws_secret_arn}"
+        )
+
+    import os
+    aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
 
     return SshKeyStatusResponse(
         configured=len(ssh_keys) > 0,
         keys=[SshKeyResponse.model_validate(key) for key in ssh_keys],
+        aws_region=aws_region,
     )
 
 
-@router.get("/debug", response_model=dict)
-async def debug_ssh_keys(user: CurrentUser, db: DbSession) -> dict:
-    """Debug endpoint to see stored SSH key details including AWS secret ARNs."""
-    clerk_user_id = user.get("sub")
-    
-    result = await db.execute(
-        select(UserSshKey)
-        .where(UserSshKey.clerk_user_id == clerk_user_id)
-        .order_by(UserSshKey.created_at.desc())
-    )
-    ssh_keys = result.scalars().all()
-    
-    import os
-    aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "not set"
-    
-    return {
-        "user_id": clerk_user_id,
-        "aws_region": aws_region,
-        "keys": [
-            {
-                "id": key.id,
-                "aws_secret_arn": key.aws_secret_arn,
-                "prime_ssh_key_id": key.prime_ssh_key_id,
-                "created_at": key.created_at.isoformat(),
-                "public_key_preview": key.public_key[:50] + "...",
-            }
-            for key in ssh_keys
-        ],
-    }
-
-
-@router.get("/list-prime-keys", response_model=dict)
-async def list_prime_keys(user: CurrentUser) -> dict:
-    """List all SSH keys from Prime Intellect (for debugging/cleanup)."""
-    try:
-        result = await list_prime_ssh_keys()
-        keys = result.get("data", [])
-        logger.info(f"Found {len(keys)} SSH keys in Prime Intellect")
-        return {
-            "keys": keys,
-            "total_count": result.get("total_count", len(keys)),
-        }
-    except PrimeIntellectAPIError as exc:
-        logger.error(f"Failed to list Prime Intellect keys: {exc.message}")
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
-
-
-@router.delete("/prime/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_prime_key(key_id: str, user: CurrentUser) -> None:
-    """Delete an SSH key directly from Prime Intellect (for cleanup)."""
-    try:
-        await delete_prime_ssh_key(key_id)
-        logger.info(f"Deleted SSH key {key_id} from Prime Intellect")
-    except PrimeIntellectAPIError as exc:
-        logger.error(f"Failed to delete Prime Intellect key {key_id}: {exc.message}")
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
