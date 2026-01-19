@@ -27,7 +27,11 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const { id } = await params;
   const projectId = Number(id);
 
-  const projectResult = await getProject(projectId);
+  // Fetch project and runs in parallel - they're independent
+  const [projectResult, runsResult] = await Promise.all([
+    getProject(projectId),
+    getProjectRuns(projectId),
+  ]);
 
   if (!projectResult.success) {
     if (projectResult.error?.toLowerCase().includes("not found")) {
@@ -42,7 +46,6 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   }
 
   const project = projectResult.project!;
-  const runsResult = await getProjectRuns(projectId);
 
   if (!runsResult.success) {
     return (
@@ -55,10 +58,13 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
   const runs = (runsResult.runs ?? []) as RunRecord[];
   const runIds = runs.map((run) => run.id);
+  // Statuses depend on run IDs, so this stays sequential
   const statusesResult = runIds.length
     ? await getRunStatuses(runIds)
     : { success: true, statuses: {} };
-  const statusMap = statusesResult.success ? statusesResult.statuses ?? {} : {};
+  const statusMap = statusesResult.success
+    ? (statusesResult.statuses ?? {})
+    : {};
   const statusError = statusesResult.success ? null : statusesResult.error;
 
   return (
@@ -103,7 +109,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <TableBody>
               {runs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={5}
+                    className="text-sm text-muted-foreground"
+                  >
                     No runs yet.
                   </TableCell>
                 </TableRow>
