@@ -131,7 +131,9 @@ async def upload_ssh_key_route(
     try:
         # Prime Intellect requires a name field, so generate one if user didn't provide
         key_name = body.name or f"rlx-key-{int(time.time())}"
-        logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id} with name: {key_name}")
+        logger.info(
+            f"Uploading public key to Prime Intellect for user {clerk_user_id} with name: {key_name}"
+        )
         prime_key = await upload_prime_ssh_key(body.public_key, name=key_name)
         prime_key_id = prime_key.get("id") or prime_key.get("key_id")
         if not prime_key_id:

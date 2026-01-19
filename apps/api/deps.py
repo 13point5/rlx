@@ -73,9 +73,7 @@ async def get_github_connection(clerk_user_id: str, db: AsyncSession) -> GitHubC
     return connection
 
 
-async def get_valid_github_token(
-    connection: GitHubConnection, db: AsyncSession
-) -> str:
+async def get_valid_github_token(connection: GitHubConnection, db: AsyncSession) -> str:
     """
     Get a valid GitHub access token or raise 401.
 
@@ -89,8 +87,6 @@ async def get_valid_github_token(
     if not access_token:
         await db.delete(connection)
         await db.commit()
-        raise HTTPException(
-            status_code=401, detail="GitHub token expired. Please reconnect."
-        )
+        raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
 
     return access_token

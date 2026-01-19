@@ -19,6 +19,7 @@ class RunStatus(StrEnum):
     STOPPED = "STOPPED"
     TERMINATED = "TERMINATED"
 
+
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")

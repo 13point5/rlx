@@ -241,8 +241,7 @@ export function GitHubConnect() {
                     href={repo.html_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                     className="block rounded-none border p-3 transition-colors hover:bg-muted"
-
+                    className="block rounded-none border p-3 transition-colors hover:bg-muted"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{repo.name}</span>

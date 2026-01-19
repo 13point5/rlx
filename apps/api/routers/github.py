@@ -239,10 +239,7 @@ async def repos(
                 raise HTTPException(status_code=500, detail="Failed to fetch repositories")
 
         # Filter out already imported repos
-        filtered_repos = [
-            repo for repo in repos_response.repos
-            if repo.id not in imported_repo_ids
-        ]
+        filtered_repos = [repo for repo in repos_response.repos if repo.id not in imported_repo_ids]
 
         return {
             "repos": [asdict(repo) for repo in filtered_repos],
