@@ -207,17 +207,7 @@ async def get_runs_status(
     except PrimeIntellectAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
-    status_entries: list[dict[str, Any]] = []
-
-    if isinstance(status_payload, dict):
-        data = status_payload.get("data")
-        if isinstance(data, list):
-            status_entries = data
-        else:
-            status_entries = [status_payload]
-    elif isinstance(status_payload, list):
-        status_entries = status_payload
-
+    status_entries = _extract_status_entries(status_payload)
     if not status_entries:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -264,20 +254,29 @@ async def get_run(run_id: int, user: CurrentUser, db: DbSession):
     return run
 
 
-def _extract_status_payload(payload: Any) -> dict[str, Any] | None:
+def _extract_status_entries(payload: Any) -> list[dict[str, Any]]:
+    """
+    Extract status entries from various Prime Intellect API response formats.
+
+    The API can return:
+    - A list of entries directly
+    - A dict with a "data" key containing a list
+    - A single dict entry
+    """
     if payload is None:
-        return None
+        return []
     if isinstance(payload, list):
-        return payload[0] if payload else None
-    if isinstance(payload, dict) and "data" in payload:
-        data = payload["data"]
-        if isinstance(data, list):
-            return data[0] if data else None
-        if isinstance(data, dict):
-            return data
-    if isinstance(payload, dict):
         return payload
-    return None
+    if isinstance(payload, dict):
+        data = payload.get("data", payload)
+        return data if isinstance(data, list) else [data]
+    return []
+
+
+def _extract_single_status(payload: Any) -> dict[str, Any] | None:
+    """Extract a single status entry from the payload."""
+    entries = _extract_status_entries(payload)
+    return entries[0] if entries else None
 
 
 @router.get("/{run_id}/status", response_model=RunStatusResponse)
@@ -303,7 +302,7 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     except PrimeIntellectAPIError as exc:
         _raise_prime_error(exc.message, exc.status_code)
 
-    raw_status_data = _extract_status_payload(status_payload)
+    raw_status_data = _extract_single_status(status_payload)
 
     if not raw_status_data:
         _raise_prime_error(
