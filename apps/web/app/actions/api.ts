@@ -1056,7 +1056,8 @@ export async function getSSHKeyStatus(): Promise<{
 
 export async function uploadSSHKey(
   publicKey: string,
-  privateKey: string
+  privateKey: string,
+  name?: string
 ): Promise<{
   success: boolean;
   data?: SSHKeyResponse;
@@ -1080,6 +1081,7 @@ export async function uploadSSHKey(
       {
         public_key: publicKey,
         private_key: privateKey,
+        ...(name && { name }),
       },
       {
         headers: {
@@ -1139,21 +1141,22 @@ export async function deleteSSHKey(keyId: number): Promise<{
       const detail = error.response?.data?.detail;
       // Handle Pydantic validation errors (array format)
       if (Array.isArray(detail)) {
-        const errorMessages = detail.map((err: any) => 
-          err.msg || JSON.stringify(err)
-        ).join(", ");
+        const errorMessages = detail
+          .map((err: any) => err.msg || JSON.stringify(err))
+          .join(", ");
         return {
           success: false,
           error: errorMessages,
         };
       }
       // Handle string errors
-      const errorMessage = typeof detail === "string" 
-        ? detail 
-        : JSON.stringify(detail);
+      const errorMessage =
+        typeof detail === "string" ? detail : JSON.stringify(detail);
       return {
         success: false,
-        error: errorMessage || `API error: ${error.response?.status || error.message}`,
+        error:
+          errorMessage ||
+          `API error: ${error.response?.status || error.message}`,
       };
     }
 

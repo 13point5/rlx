@@ -166,6 +166,16 @@ def _handle_response(response: httpx.Response) -> Dict[str, Any]:
         message = error_message or response.text or "Prime Intellect API error"
         raise PrimeIntellectAPIError(response.status_code, message)
 
+    # Handle 204 No Content - successful response with no body
+    if response.status_code == 204:
+        logger.debug(f"Prime Intellect API success: 204 No Content")
+        return {}
+
+    # Only try to parse JSON if there's content
+    if not response.text:
+        logger.debug(f"Prime Intellect API success: {response.status_code} with empty body")
+        return {}
+
     try:
         result = response.json()
         logger.debug(f"Prime Intellect API success: response_keys={list(result.keys()) if isinstance(result, dict) else 'not_dict'}")
