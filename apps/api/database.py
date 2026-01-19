@@ -4,7 +4,8 @@ from enum import StrEnum
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -18,6 +19,37 @@ class RunStatus(StrEnum):
     ERROR = "ERROR"
     STOPPED = "STOPPED"
     TERMINATED = "TERMINATED"
+
+
+class JobStatus(StrEnum):
+    """Status values for jobs."""
+
+    PENDING = "PENDING"  # Waiting for pod to be ready
+    QUEUED = "QUEUED"  # In Celery queue
+    RUNNING = "RUNNING"  # Currently executing
+    SUCCESS = "SUCCESS"  # Completed successfully
+    FAILED = "FAILED"  # Execution failed
+    TIMEOUT = "TIMEOUT"  # Timed out
+    CANCELLED = "CANCELLED"  # Cancelled by user
+
+
+class JobType(StrEnum):
+    """Types of jobs."""
+
+    CLONE_REPO = "CLONE_REPO"
+    LIST_FILES = "LIST_FILES"
+    CUSTOM_COMMAND = "CUSTOM_COMMAND"
+
+
+class CommandStatus(StrEnum):
+    """Status of command execution."""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    TIMEOUT = "TIMEOUT"
+    CANCELLED = "CANCELLED"
 
 
 load_dotenv()
@@ -140,6 +172,71 @@ class UserSshKey(Base):
     aws_secret_arn = Column(String, nullable=False)
     name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class Job(Base):
+    """
+    Represents a job to be executed on a pod.
+    Jobs are created when a run is created and executed when the pod becomes ACTIVE.
+    """
+
+    __tablename__ = "jobs"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False, index=True)
+    clerk_user_id = Column(String, nullable=False, index=True)
+
+    # Job type and configuration
+    job_type = Column(String, nullable=False)  # JobType enum value
+    job_config = Column(JSON, nullable=False, default=dict)  # Type-specific config
+
+    # Celery task tracking
+    celery_task_id = Column(String, nullable=True, index=True)
+
+    # Status
+    status = Column(String, nullable=False, default=JobStatus.PENDING)
+
+    # Execution order within a run
+    sequence = Column(Integer, nullable=False, default=0)
+
+    # Timing
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Error info
+    error_message = Column(Text, nullable=True)
+    error_type = Column(String, nullable=True)
+
+
+class JobCommand(Base):
+    """
+    Records each command executed as part of a job.
+    Provides detailed logging of what was run and the results.
+    """
+
+    __tablename__ = "job_commands"
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+
+    # Command details
+    command = Column(Text, nullable=False)
+    working_dir = Column(String, nullable=True)
+
+    # Results
+    stdout = Column(Text, nullable=True)
+    stderr = Column(Text, nullable=True)
+    exit_code = Column(Integer, nullable=True)
+    status = Column(String, nullable=False, default=CommandStatus.PENDING)
+
+    # Timing
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    # Sequence within job
+    sequence = Column(Integer, nullable=False, default=0)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
