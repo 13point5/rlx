@@ -19,6 +19,66 @@ import type {
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
 
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Extract error message from various error types.
+ */
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    const detail = error.response?.data?.detail;
+    // Handle Pydantic validation errors (array format)
+    if (Array.isArray(detail)) {
+      return detail.map((err: { msg?: string }) => err.msg || JSON.stringify(err)).join(", ");
+    }
+    if (typeof detail === "string") {
+      return detail;
+    }
+    if (detail) {
+      return JSON.stringify(detail);
+    }
+    return `API error: ${error.response?.status || error.message}`;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
+/**
+ * Result type for authenticated requests.
+ */
+type ApiResult<T> = { success: true; data: T } | { success: false; error: string };
+
+/**
+ * Wrapper for authenticated API requests.
+ * Handles auth check, token retrieval, and error extraction.
+ */
+async function authenticatedRequest<T>(
+  requestFn: (token: string) => Promise<T>
+): Promise<ApiResult<T>> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const data = await requestFn(token);
+    return { success: true, data };
+  } catch (error) {
+    console.error("API request error:", error);
+    return { success: false, error: extractErrorMessage(error) };
+  }
+}
+
 /**
  * Server action to fetch the secret from the Python API.
  * This runs on the server and is never cached.
@@ -468,46 +528,17 @@ export async function getProjects(): Promise<{
   projects?: Project[];
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     const response = await axios.get(`${API_BASE_URL}/api/projects`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    return { projects: response.data.projects as Project[] };
+  });
 
-    return {
-      success: true,
-      projects: response.data.projects,
-    };
-  } catch (error) {
-    console.error("Error getting projects:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true, projects: result.data.projects };
 }
 
 export async function getProject(id: number): Promise<{
@@ -515,43 +546,17 @@ export async function getProject(id: number): Promise<{
   project?: Project;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     const response = await axios.get(`${API_BASE_URL}/api/projects/${id}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    return response.data as Project;
+  });
 
-    return { success: true, project: response.data };
-  } catch (error) {
-    console.error("Error getting project:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true, project: result.data };
 }
 
 export async function createProject(repoUrl: string): Promise<{
@@ -559,90 +564,36 @@ export async function createProject(repoUrl: string): Promise<{
   project?: Project;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     const response = await axios.post(
       `${API_BASE_URL}/api/projects`,
       { repo_url: repoUrl },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${token}` } }
     );
+    return response.data as Project;
+  });
 
-    return { success: true, project: response.data };
-  } catch (error) {
-    console.error("Error creating project:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true, project: result.data };
 }
 
 export async function deleteProject(id: number): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     await axios.delete(`${API_BASE_URL}/api/projects/${id}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    return null;
+  });
 
-    return { success: true };
-  } catch (error) {
-    console.error("Error deleting project:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true };
 }
 
 export async function startRun(input: {
@@ -1015,43 +966,17 @@ export async function getSSHKeyStatus(): Promise<{
   data?: SSHKeyStatus;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     const response = await axios.get(`${API_BASE_URL}/api/ssh-keys`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    return response.data as SSHKeyStatus;
+  });
 
-    return { success: true, data: response.data };
-  } catch (error) {
-    console.error("Error getting SSH key status:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true, data: result.data };
 }
 
 export async function uploadSSHKey(
@@ -1063,19 +988,7 @@ export async function uploadSSHKey(
   data?: SSHKeyResponse;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     const response = await axios.post(
       `${API_BASE_URL}/api/ssh-keys`,
       {
@@ -1083,86 +996,30 @@ export async function uploadSSHKey(
         private_key: privateKey,
         ...(name && { name }),
       },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${token}` } }
     );
+    return response.data as SSHKeyResponse;
+  });
 
-    return { success: true, data: response.data };
-  } catch (error) {
-    console.error("Error uploading SSH key:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true, data: result.data };
 }
 
 export async function deleteSSHKey(keyId: number): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
+  const result = await authenticatedRequest(async (token) => {
     await axios.delete(`${API_BASE_URL}/api/ssh-keys/${keyId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
+    return null;
+  });
 
-    return { success: true };
-  } catch (error) {
-    console.error("Error deleting SSH key:", error);
-
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      // Handle Pydantic validation errors (array format)
-      if (Array.isArray(detail)) {
-        const errorMessages = detail
-          .map((err: any) => err.msg || JSON.stringify(err))
-          .join(", ");
-        return {
-          success: false,
-          error: errorMessages,
-        };
-      }
-      // Handle string errors
-      const errorMessage =
-        typeof detail === "string" ? detail : JSON.stringify(detail);
-      return {
-        success: false,
-        error:
-          errorMessage ||
-          `API error: ${error.response?.status || error.message}`,
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
+  return { success: true };
 }
