@@ -151,3 +151,17 @@ export interface RunTerminateResponse {
   status: string;
   pod_id: string;
 }
+
+// SSH Key Types
+export interface SSHKeyStatus {
+  configured: boolean;
+  public_key?: string;
+  created_at?: string;
+}
+
+export interface SSHKeyResponse {
+  id: number;
+  public_key: string;
+  prime_ssh_key_id: string;
+  created_at: string;
+}

@@ -13,6 +13,8 @@ import type {
   RunStatusResponse,
   RunTerminateResponse,
   RunStatusBatchResponse,
+  SSHKeyStatus,
+  SSHKeyResponse,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
@@ -920,6 +922,148 @@ export async function getRunStatuses(runIds: number[]): Promise<{
     return { success: true, statuses: response.data };
   } catch (error) {
     console.error("Error fetching run statuses:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// =============================================================================
+// SSH Key Actions
+// =============================================================================
+
+export async function getSSHKeyStatus(): Promise<{
+  success: boolean;
+  data?: SSHKeyStatus;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/ssh-keys`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error("Error getting SSH key status:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function uploadSSHKey(
+  publicKey: string,
+  privateKey: string
+): Promise<{
+  success: boolean;
+  data?: SSHKeyResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/ssh-keys`,
+      {
+        public_key: publicKey,
+        private_key: privateKey,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error("Error uploading SSH key:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function deleteSSHKey(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    await axios.delete(`${API_BASE_URL}/api/ssh-keys`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting SSH key:", error);
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;
