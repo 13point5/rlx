@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getSSHKeyStatus,
   generateSSHKeyPair,
@@ -632,7 +632,7 @@ export function SSHKeySettings() {
     fetchKeys();
   }, []);
 
-  async function handleGenerate() {
+  const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
     setError(null);
 
@@ -647,9 +647,9 @@ export function SSHKeySettings() {
 
     setGeneratedKey(result.data);
     setUploadMode("generate");
-  }
+  }, []);
 
-  async function handleConfirmSave() {
+  const handleConfirmSave = useCallback(async () => {
     if (!generatedKey) return;
 
     setIsUploading(true);
@@ -669,11 +669,17 @@ export function SSHKeySettings() {
     }
 
     // Reset form state and refresh
-    resetFormState();
+    setUploadMode(null);
+    setGeneratedKey(null);
+    setPrivateKeySaved(false);
+    setManualPublicKey("");
+    setManualPrivateKey("");
+    setKeyName("");
+    setError(null);
     await fetchKeys();
-  }
+  }, [generatedKey, keyName]);
 
-  async function handleUpload() {
+  const handleUpload = useCallback(async () => {
     if (!manualPublicKey.trim() || !manualPrivateKey.trim()) {
       setError("Both public and private keys are required");
       return;
@@ -696,16 +702,22 @@ export function SSHKeySettings() {
     }
 
     // Reset form state and refresh
-    resetFormState();
+    setUploadMode(null);
+    setGeneratedKey(null);
+    setPrivateKeySaved(false);
+    setManualPublicKey("");
+    setManualPrivateKey("");
+    setKeyName("");
+    setError(null);
     await fetchKeys();
-  }
+  }, [manualPublicKey, manualPrivateKey, keyName]);
 
-  function handleDeleteClick(keyId: number) {
+  const handleDeleteClick = useCallback((keyId: number) => {
     setKeyToDelete(keyId);
     setDeleteDialogOpen(true);
-  }
+  }, []);
 
-  async function handleDeleteConfirm() {
+  const handleDeleteConfirm = useCallback(async () => {
     if (!keyToDelete) return;
 
     setIsDeleting(true);
@@ -727,16 +739,16 @@ export function SSHKeySettings() {
     }
 
     await fetchKeys();
-  }
+  }, [keyToDelete]);
 
-  function handleCopyPrivateKey() {
+  const handleCopyPrivateKey = useCallback(() => {
     if (!generatedKey) return;
     navigator.clipboard.writeText(generatedKey.privateKey);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
+  }, [generatedKey]);
 
-  function handleDownloadPrivateKey() {
+  const handleDownloadPrivateKey = useCallback(() => {
     if (!generatedKey) return;
     const blob = new Blob([generatedKey.privateKey], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -747,15 +759,15 @@ export function SSHKeySettings() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
+  }, [generatedKey]);
 
-  function handleCopyPublicKey(key: string, keyId: number) {
+  const handleCopyPublicKey = useCallback((key: string, keyId: number) => {
     navigator.clipboard.writeText(key);
     setCopiedKeyId(keyId);
     setTimeout(() => setCopiedKeyId(null), 2000);
-  }
+  }, []);
 
-  function resetFormState() {
+  const resetFormState = useCallback(() => {
     setUploadMode(null);
     setGeneratedKey(null);
     setPrivateKeySaved(false);
@@ -763,7 +775,7 @@ export function SSHKeySettings() {
     setManualPrivateKey("");
     setKeyName("");
     setError(null);
-  }
+  }, []);
 
   // Loading state
   if (isLoading) {
