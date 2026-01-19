@@ -272,83 +272,125 @@ export function SSHKeySettings() {
   // Connected state
   if (state === "connected") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Key className="size-5" />
-            SSH Keys ({keys.length})
-          </CardTitle>
-          <CardDescription>
-            Your SSH keys are configured and ready for GPU pod access.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <div className="space-y-3">
-            {keys.map((key) => (
-              <div key={key.id} className="border rounded-lg p-3 space-y-2">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Public Key</Label>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        handleCopyPublicKey(key.public_key, key.id)
-                      }
-                      className="h-7"
-                    >
-                      {copiedKeyId === key.id ? (
-                        <>
-                          <Check className="size-3 mr-1" />
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="size-3 mr-1" />
-                          Copy
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
-                    {key.public_key}
-                  </code>
-                  <div className="space-y-1 pt-2 border-t">
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="size-5" />
+              SSH Keys ({keys.length})
+            </CardTitle>
+            <CardDescription>
+              Your SSH keys are configured and ready for GPU pod access.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="space-y-3">
+              {keys.map((key) => (
+                <div key={key.id} className="border rounded-lg p-3 space-y-2">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        Created on {formatDate(key.created_at)}
-                      </p>
+                      <Label className="text-xs">Public Key</Label>
                       <Button
-                        variant="destructive"
                         size="sm"
-                        onClick={() => handleDelete(key.id)}
+                        variant="outline"
+                        onClick={() =>
+                          handleCopyPublicKey(key.public_key, key.id)
+                        }
+                        className="h-7"
                       >
-                        <Trash2 className="size-3 mr-1" />
-                        Delete
+                        {copiedKeyId === key.id ? (
+                          <>
+                            <Check className="size-3 mr-1" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="size-3 mr-1" />
+                            Copy
+                          </>
+                        )}
                       </Button>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        AWS Secret ARN:
-                      </p>
-                      <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
-                        {key.aws_secret_arn}
-                      </code>
-                      {awsRegion && (
+                    <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
+                      {key.public_key}
+                    </code>
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
-                          AWS Region:{" "}
-                          <span className="font-mono">{awsRegion}</span>
+                          Created on {formatDate(key.created_at)}
                         </p>
-                      )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(key.id)}
+                        >
+                          <Trash2 className="size-3 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          AWS Secret ARN:
+                        </p>
+                        <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
+                          {key.aws_secret_arn}
+                        </code>
+                        {awsRegion && (
+                          <p className="text-xs text-muted-foreground">
+                            AWS Region:{" "}
+                            <span className="font-mono">{awsRegion}</span>
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Add More Keys */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Add Another Key</CardTitle>
+            <CardDescription className="text-xs mt-1">
+              Create additional SSH keys for different purposes
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="h-auto py-4 flex-col gap-2"
+                onClick={handleGenerate}
+                disabled={state === "generating"}
+              >
+                <Plus className="size-5" />
+                <span className="font-medium">
+                  {state === "generating" ? "Generating..." : "Generate New Key"}
+                </span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Create a new Ed25519 key pair
+                </span>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="h-auto py-4 flex-col gap-2"
+                onClick={() => setUploadMode("upload")}
+              >
+                <Upload className="size-5" />
+                <span className="font-medium">Upload Existing Key</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Use your own SSH key pair
+                </span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </>
     );
   }
 
