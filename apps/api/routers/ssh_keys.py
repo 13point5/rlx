@@ -27,13 +27,14 @@ router = APIRouter(prefix="/api/ssh-keys", tags=["ssh-keys"])
 class UploadSshKeyRequest(BaseModel):
     public_key: str
     private_key: str
+    name: str | None = None
 
 
 class SshKeyResponse(BaseModel):
     id: int
     public_key: str
     prime_ssh_key_id: str
-    aws_secret_arn: str
+    name: str | None = None
     created_at: datetime
 
     class Config:
@@ -130,11 +131,10 @@ async def upload_ssh_key_route(
 
     prime_key_id = None
     try:
-        # Generate a name for the key (Prime Intellect requires it)
+        # Prime Intellect requires a name field, so generate one if user didn't provide
         import time
-
-        key_name = f"rlx-key-{int(time.time())}"
-        logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id}")
+        key_name = body.name or f"rlx-key-{int(time.time())}"
+        logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id} with name: {key_name}")
         prime_key = await upload_prime_ssh_key(body.public_key, name=key_name)
         prime_key_id = prime_key.get("id") or prime_key.get("key_id")
         if not prime_key_id:
@@ -161,6 +161,7 @@ async def upload_ssh_key_route(
             public_key=body.public_key,
             prime_ssh_key_id=prime_key_id,
             aws_secret_arn=secret_arn,
+            name=key_name,  # Store the name we sent (either user-provided or auto-generated)
             created_at=datetime.now(timezone.utc),
         )
         db.add(ssh_key)

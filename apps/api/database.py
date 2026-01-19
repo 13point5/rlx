@@ -29,6 +29,9 @@ engine = (
         echo=True,
         pool_pre_ping=True,  # Test connections before using them (handles idle timeouts)
         pool_recycle=300,  # Recycle connections after 5 minutes
+        connect_args={
+            "statement_cache_size": 0,  # Disable statement caching to avoid InvalidCachedStatementError after migrations
+        },
     )
     if DATABASE_URL
     else None
@@ -122,6 +125,7 @@ class UserSshKey(Base):
     public_key = Column(String, nullable=False)
     prime_ssh_key_id = Column(String, nullable=False)
     aws_secret_arn = Column(String, nullable=False)
+    name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

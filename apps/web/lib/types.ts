@@ -173,6 +173,6 @@ export interface SSHKeyResponse {
   id: number;
   public_key: string;
   prime_ssh_key_id: string;
-  aws_secret_arn: string;
+  name: string | null;
   created_at: string;
 }

@@ -109,7 +109,7 @@ Following the pattern from [GitHubSettings](apps/web/components/github-settings.
 Add SSH Keys section below GitHub Integration:
 
 ```tsx
-<div className="border-t pt-6">
+a<div className="border-t pt-6">
   <div className="space-y-4">
     <div>
       <h2 className="text-lg md:text-xl font-semibold">SSH Keys</h2>
