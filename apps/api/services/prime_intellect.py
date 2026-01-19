@@ -1,7 +1,10 @@
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 BASE_URL = "https://api.primeintellect.ai"
@@ -72,8 +75,13 @@ async def upload_prime_ssh_key(
     if name:
         payload["name"] = name
 
+    logger.info(f"Uploading SSH key to Prime Intellect: url={url}, payload_keys={list(payload.keys())}")
+    
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         response = await client.post(url, headers=headers, json=payload)
+    
+    logger.info(f"Prime Intellect response: status={response.status_code}, headers={dict(response.headers)}")
+    logger.debug(f"Prime Intellect response body (first 500 chars): {response.text[:500]}")
 
     return _handle_response(response)
 
@@ -114,15 +122,20 @@ def _handle_response(response: httpx.Response) -> Dict[str, Any]:
         try:
             data = response.json()
             error_message = data.get("error", {}).get("message") or data.get("message")
+            logger.error(f"Prime Intellect API error: status={response.status_code}, error={error_message}, full_response={data}")
         except ValueError:
             error_message = None
+            logger.error(f"Prime Intellect API error (non-JSON): status={response.status_code}, text={response.text[:500]}")
 
         message = error_message or response.text or "Prime Intellect API error"
         raise PrimeIntellectAPIError(response.status_code, message)
 
     try:
-        return response.json()
-    except ValueError:
+        result = response.json()
+        logger.debug(f"Prime Intellect API success: response_keys={list(result.keys()) if isinstance(result, dict) else 'not_dict'}")
+        return result
+    except ValueError as exc:
+        logger.error(f"Invalid JSON response from Prime Intellect API: status={response.status_code}, content_type={response.headers.get('content-type')}, text={response.text[:500]}")
         raise PrimeIntellectAPIError(
-            500, "Invalid JSON response from Prime Intellect API"
+            500, f"Invalid JSON response from Prime Intellect API: {str(exc)}"
         )

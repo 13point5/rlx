@@ -1,8 +1,11 @@
+import logging
 import os
 from typing import Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+
+logger = logging.getLogger(__name__)
 
 
 class SecretsManagerError(Exception):
@@ -20,23 +23,61 @@ def _get_client():
     return boto3.client("secretsmanager", region_name=region)
 
 
-def create_private_key_secret(
-    *, clerk_user_id: str, private_key: str, secret_name: Optional[str] = None
-) -> str:
+def get_secret_arn_by_name(secret_name: str) -> Optional[str]:
+    """Get the ARN of a secret by name if it exists."""
     client = _get_client()
-    name = secret_name or f"rlx/user-ssh-key/{clerk_user_id}"
     try:
-        response = client.create_secret(Name=name, SecretString=private_key)
+        response = client.describe_secret(SecretId=secret_name)
+        return response.get("ARN")
     except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        if error_code == "ResourceNotFoundException":
+            return None
         raise SecretsManagerError(
             exc.response.get("Error", {}).get("Message", str(exc))
         )
     except BotoCoreError as exc:
         raise SecretsManagerError(str(exc))
 
+
+def create_private_key_secret(
+    *, clerk_user_id: str, private_key: str, secret_name: Optional[str] = None
+) -> str:
+    client = _get_client()
+    name = secret_name or f"rlx/user-ssh-key/{clerk_user_id}"
+    
+    # Check if secret already exists (orphaned from previous failed attempt)
+    existing_arn = get_secret_arn_by_name(name)
+    if existing_arn:
+        logger.warning(f"Secret {name} already exists, deleting orphaned secret")
+        try:
+            client.delete_secret(
+                SecretId=existing_arn,
+                ForceDeleteWithoutRecovery=True,
+            )
+            logger.info(f"Deleted orphaned secret {name}")
+        except ClientError as exc:
+            logger.error(f"Failed to delete orphaned secret: {exc}")
+            raise SecretsManagerError(
+                f"Secret already exists and could not be deleted: {exc.response.get('Error', {}).get('Message', str(exc))}"
+            )
+    
+    try:
+        logger.info(f"Creating secret {name}")
+        response = client.create_secret(Name=name, SecretString=private_key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        error_message = exc.response.get("Error", {}).get("Message", str(exc))
+        logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
+        raise SecretsManagerError(error_message)
+    except BotoCoreError as exc:
+        logger.error(f"AWS BotoCore error: {exc}")
+        raise SecretsManagerError(str(exc))
+
     arn = response.get("ARN")
     if not arn:
         raise SecretsManagerError("AWS Secrets Manager did not return ARN")
+    logger.info(f"Successfully created secret {name} with ARN {arn}")
     return arn
 
 

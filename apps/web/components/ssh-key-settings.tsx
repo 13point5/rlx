@@ -53,6 +53,7 @@ export function SSHKeySettings() {
   const [generatedKey, setGeneratedKey] = useState<GeneratedKey | null>(null);
   const [privateKeySaved, setPrivateKeySaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [publicKeyCopied, setPublicKeyCopied] = useState(false);
 
   // Form state for manual upload
   const [manualPublicKey, setManualPublicKey] = useState("");
@@ -213,9 +214,11 @@ export function SSHKeySettings() {
     });
   }
 
-  function truncateKey(key: string): string {
-    if (key.length <= 50) return key;
-    return `${key.substring(0, 30)}...${key.substring(key.length - 15)}`;
+  function handleCopyPublicKey() {
+    if (!publicKey) return;
+    navigator.clipboard.writeText(publicKey);
+    setPublicKeyCopied(true);
+    setTimeout(() => setPublicKeyCopied(false), 2000);
   }
 
   // Loading state
@@ -268,10 +271,30 @@ export function SSHKeySettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {publicKey && (
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Public Key</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Public Key</Label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopyPublicKey}
+                  className="h-7"
+                >
+                  {publicKeyCopied ? (
+                    <>
+                      <Check className="size-3 mr-1" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3 mr-1" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
               <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
-                {truncateKey(publicKey)}
+                {publicKey}
               </code>
             </div>
           )}
