@@ -1,4 +1,5 @@
 import { GitHubSettings } from "@/components/github-settings";
+import { SSHKeySettings } from "@/components/ssh-key-settings";
 
 export default function SettingsPage() {
   return (
@@ -20,6 +21,19 @@ export default function SettingsPage() {
           </div>
 
           <GitHubSettings />
+        </div>
+      </div>
+
+      <div className="border-t pt-6">
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg md:text-xl font-semibold">SSH Keys</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configure SSH keys for GPU pod access
+            </p>
+          </div>
+
+          <SSHKeySettings />
         </div>
       </div>
     </div>
