@@ -379,15 +379,14 @@ async def fetch_user_repos(
             search_lower = search.lower()
 
             # Separate name matches from description-only matches
-            name_matches = [
-                repo for repo in all_repos
-                if search_lower in repo["name"].lower()
-            ]
+            name_matches = [repo for repo in all_repos if search_lower in repo["name"].lower()]
 
             desc_only_matches = [
-                repo for repo in all_repos
-                if search_lower not in repo["name"].lower() and
-                   repo.get("description") and search_lower in repo["description"].lower()
+                repo
+                for repo in all_repos
+                if search_lower not in repo["name"].lower()
+                and repo.get("description")
+                and search_lower in repo["description"].lower()
             ]
 
             # Combine: name matches first, then description matches
