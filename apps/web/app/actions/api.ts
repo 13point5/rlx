@@ -1137,10 +1137,23 @@ export async function deleteSSHKey(keyId: number): Promise<{
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;
+      // Handle Pydantic validation errors (array format)
+      if (Array.isArray(detail)) {
+        const errorMessages = detail.map((err: any) => 
+          err.msg || JSON.stringify(err)
+        ).join(", ");
+        return {
+          success: false,
+          error: errorMessages,
+        };
+      }
+      // Handle string errors
+      const errorMessage = typeof detail === "string" 
+        ? detail 
+        : JSON.stringify(detail);
       return {
         success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
+        error: errorMessage || `API error: ${error.response?.status || error.message}`,
       };
     }
 
