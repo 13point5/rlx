@@ -1128,3 +1128,93 @@ export async function deleteSSHKey(): Promise<{
     };
   }
 }
+
+export async function listPrimeSSHKeys(): Promise<{
+  success: boolean;
+  keys?: Array<{
+    id: string;
+    publicKey: string;
+    name?: string;
+    createdAt: string;
+  }>;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const response = await axios.get(`${API_BASE_URL}/api/ssh-keys/list-prime-keys`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true, keys: response.data.keys || [] };
+  } catch (error) {
+    console.error("Error listing Prime Intellect SSH keys:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function deletePrimeSSHKey(keyId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    await axios.delete(`${API_BASE_URL}/api/ssh-keys/prime/${keyId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting Prime Intellect SSH key:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error: detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
