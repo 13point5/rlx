@@ -147,7 +147,7 @@ export function GpuAvailability({
           {[...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="h-40 rounded border border-border bg-accent animate-pulse"
+              className="h-40 border border-border bg-accent animate-pulse"
             />
           ))}
         </div>
@@ -200,7 +200,7 @@ export function GpuAvailability({
       </div>
 
       {instances.length === 0 ? (
-        <div className="rounded border border-dashed border-border p-8 text-center">
+        <div className="border border-dashed border-border p-8 text-center">
           <p className="text-sm text-muted-foreground">
             No instances available for {displayName} x {count}
           </p>
@@ -212,7 +212,7 @@ export function GpuAvailability({
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={`instance-skeleton-${index}`}
-                  className="h-40 rounded border border-border bg-accent/40 animate-pulse"
+                  className="h-40 border border-border bg-accent/40 animate-pulse"
                 />
               ))}
             </div>
@@ -229,7 +229,7 @@ export function GpuAvailability({
                   <div
                     key={instanceKey}
                     className={cn(
-                      "p-4 border border-border/90 rounded bg-transparent transition-colors cursor-pointer",
+                      "p-4 border border-border/90 bg-transparent transition-colors cursor-pointer",
                       !isSelected && "hover:border-border hover:bg-accent/40",
                       isSelected && "border-primary/70 bg-primary/20"
                     )}
