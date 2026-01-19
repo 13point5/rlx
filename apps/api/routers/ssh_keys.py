@@ -43,27 +43,24 @@ class SshKeyResponse(BaseModel):
 
 class SshKeyStatusResponse(BaseModel):
     configured: bool
-    public_key: Optional[str] = None
-    created_at: Optional[datetime] = None
+    keys: list[SshKeyResponse] = []
 
 
 @router.get("", response_model=SshKeyStatusResponse)
 async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusResponse:
-    """Check if user has a configured SSH key."""
+    """Get all SSH keys for the user."""
     clerk_user_id = user.get("sub")
 
     result = await db.execute(
-        select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id)
+        select(UserSshKey)
+        .where(UserSshKey.clerk_user_id == clerk_user_id)
+        .order_by(UserSshKey.created_at.desc())
     )
-    ssh_key = result.scalar_one_or_none()
-
-    if not ssh_key:
-        return SshKeyStatusResponse(configured=False)
+    ssh_keys = result.scalars().all()
 
     return SshKeyStatusResponse(
-        configured=True,
-        public_key=ssh_key.public_key,
-        created_at=ssh_key.created_at,
+        configured=len(ssh_keys) > 0,
+        keys=[SshKeyResponse.model_validate(key) for key in ssh_keys],
     )
 
 
@@ -94,13 +91,15 @@ async def delete_prime_key(key_id: str, user: CurrentUser) -> None:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
-@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_ssh_key(user: CurrentUser, db: DbSession) -> None:
-    """Delete user's SSH key from database, AWS, and Prime Intellect."""
+@router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ssh_key(key_id: int, user: CurrentUser, db: DbSession) -> None:
+    """Delete a specific SSH key by ID from database, AWS, and Prime Intellect."""
     clerk_user_id = user.get("sub")
 
     result = await db.execute(
-        select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id)
+        select(UserSshKey).where(
+            UserSshKey.id == key_id, UserSshKey.clerk_user_id == clerk_user_id
+        )
     )
     ssh_key = result.scalar_one_or_none()
 
@@ -135,17 +134,14 @@ async def upload_ssh_key_route(
     clerk_user_id = user.get("sub")
     logger.info(f"Uploading SSH key for user {clerk_user_id}")
 
-    existing = await db.execute(select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="SSH key already configured"
-        )
-
     secret_arn = None
     try:
+        # Generate unique secret name with timestamp to avoid conflicts
+        import time
+        secret_name = f"rlx/user-ssh-key/{clerk_user_id}/{int(time.time())}"
         logger.info(f"Creating AWS secret for user {clerk_user_id}")
         secret_arn = create_private_key_secret(
-            clerk_user_id=clerk_user_id, private_key=body.private_key
+            clerk_user_id=clerk_user_id, private_key=body.private_key, secret_name=secret_name
         )
     except SecretsManagerError as exc:
         logger.error(f"Failed to create AWS secret: {exc.message}")

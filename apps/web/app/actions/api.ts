@@ -1087,7 +1087,7 @@ export async function uploadSSHKey(
   }
 }
 
-export async function deleteSSHKey(): Promise<{
+export async function deleteSSHKey(keyId: number): Promise<{
   success: boolean;
   error?: string;
 }> {
@@ -1104,7 +1104,7 @@ export async function deleteSSHKey(): Promise<{
       return { success: false, error: "Could not get session token" };
     }
 
-    await axios.delete(`${API_BASE_URL}/api/ssh-keys`, {
+    await axios.delete(`${API_BASE_URL}/api/ssh-keys/${keyId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
