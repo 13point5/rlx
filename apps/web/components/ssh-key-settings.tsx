@@ -49,6 +49,7 @@ export function SSHKeySettings() {
   const [keys, setKeys] = useState<Array<{
     id: number;
     public_key: string;
+    aws_secret_arn: string;
     created_at: string;
   }>>([]);
   const [error, setError] = useState<string | null>(null);
