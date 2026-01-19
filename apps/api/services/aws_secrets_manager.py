@@ -38,3 +38,19 @@ def create_private_key_secret(
     if not arn:
         raise SecretsManagerError("AWS Secrets Manager did not return ARN")
     return arn
+
+
+def delete_private_key_secret(secret_arn: str) -> None:
+    """Delete a secret from AWS Secrets Manager."""
+    client = _get_client()
+    try:
+        client.delete_secret(
+            SecretId=secret_arn,
+            ForceDeleteWithoutRecovery=True,
+        )
+    except ClientError as exc:
+        raise SecretsManagerError(
+            exc.response.get("Error", {}).get("Message", str(exc))
+        )
+    except BotoCoreError as exc:
+        raise SecretsManagerError(str(exc))

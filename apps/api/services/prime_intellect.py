@@ -78,6 +78,17 @@ async def upload_prime_ssh_key(
     return _handle_response(response)
 
 
+async def delete_prime_ssh_key(key_id: str) -> Dict[str, Any]:
+    """Delete an SSH key from Prime Intellect."""
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/ssh_keys/{key_id}"
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.delete(url, headers=headers)
+
+    return _handle_response(response)
+
+
 async def fetch_pod_status(pod_ids: List[str]) -> Dict[str, Any]:
     headers = await _get_headers()
     url = f"{BASE_URL}/api/v1/pods/status"
