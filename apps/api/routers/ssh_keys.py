@@ -16,6 +16,8 @@ from services.prime_intellect import (
     PrimeIntellectAPIError,
     upload_prime_ssh_key,
     delete_prime_ssh_key,
+    list_prime_ssh_keys,
+    set_prime_ssh_key_primary,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,7 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
         )
 
     import os
+
     aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
 
     return SshKeyStatusResponse(
@@ -72,8 +75,6 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
         keys=[SshKeyResponse.model_validate(key) for key in ssh_keys],
         aws_region=aws_region,
     )
-
-
 
 
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -130,7 +131,20 @@ async def upload_ssh_key_route(
         raise HTTPException(status_code=500, detail=exc.message)
 
     prime_key_id = None
+    previous_primary_key_id = None
     try:
+        # Check if there's an existing primary key to preserve
+        try:
+            existing_keys = await list_prime_ssh_keys()
+            keys_list = existing_keys.get("data", [])
+            primary_key = next((k for k in keys_list if k.get("isPrimary")), None)
+            if primary_key:
+                previous_primary_key_id = primary_key.get("id")
+                logger.info(f"Found existing primary key {previous_primary_key_id}, will preserve it")
+        except PrimeIntellectAPIError:
+            # If listing fails, continue anyway - not critical
+            logger.warning("Could not list existing keys to check primary status")
+
         # Generate a name for the key (Prime Intellect requires it)
         import time
 
@@ -144,6 +158,16 @@ async def upload_ssh_key_route(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Prime Intellect did not return SSH key id",
             )
+
+        # If there was a previous primary key, restore it (Prime Intellect may have auto-set new key as primary)
+        if previous_primary_key_id and previous_primary_key_id != prime_key_id:
+            try:
+                logger.info(f"Restoring previous primary key {previous_primary_key_id}")
+                await set_prime_ssh_key_primary(previous_primary_key_id)
+            except PrimeIntellectAPIError as exc:
+                # Log but don't fail - preserving primary is nice-to-have
+                logger.warning(f"Could not restore primary key: {exc.message}")
+
     except PrimeIntellectAPIError as exc:
         logger.error(f"Failed to upload to Prime Intellect: {exc.status_code} - {exc.message}")
         # Clean up AWS secret if Prime Intellect fails
