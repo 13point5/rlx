@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,6 +18,8 @@ from services.prime_intellect import (
     upload_prime_ssh_key,
     delete_prime_ssh_key,
 )
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/ssh-keys", tags=["ssh-keys"])
@@ -102,6 +105,7 @@ async def upload_ssh_key_route(
     body: UploadSshKeyRequest, user: CurrentUser, db: DbSession
 ) -> SshKeyResponse:
     clerk_user_id = user.get("sub")
+    logger.info(f"Uploading SSH key for user {clerk_user_id}")
 
     existing = await db.execute(select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id))
     if existing.scalar_one_or_none():
@@ -109,34 +113,62 @@ async def upload_ssh_key_route(
             status_code=status.HTTP_409_CONFLICT, detail="SSH key already configured"
         )
 
+    secret_arn = None
     try:
+        logger.info(f"Creating AWS secret for user {clerk_user_id}")
         secret_arn = create_private_key_secret(
             clerk_user_id=clerk_user_id, private_key=body.private_key
         )
     except SecretsManagerError as exc:
+        logger.error(f"Failed to create AWS secret: {exc.message}")
         raise HTTPException(status_code=500, detail=exc.message)
 
+    prime_key_id = None
     try:
+        logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id}")
         prime_key = await upload_prime_ssh_key(body.public_key)
+        prime_key_id = prime_key.get("id") or prime_key.get("key_id")
+        if not prime_key_id:
+            logger.error(f"Prime Intellect response missing key ID: {prime_key}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Prime Intellect did not return SSH key id",
+            )
     except PrimeIntellectAPIError as exc:
+        logger.error(f"Failed to upload to Prime Intellect: {exc.status_code} - {exc.message}")
+        # Clean up AWS secret if Prime Intellect fails
+        if secret_arn:
+            try:
+                logger.info(f"Cleaning up orphaned AWS secret {secret_arn}")
+                delete_private_key_secret(secret_arn)
+            except SecretsManagerError as cleanup_exc:
+                logger.error(f"Failed to cleanup AWS secret: {cleanup_exc.message}")
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
-    key_id = prime_key.get("id") or prime_key.get("key_id")
-    if not key_id:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Prime Intellect did not return SSH key id",
+    try:
+        ssh_key = UserSshKey(
+            clerk_user_id=clerk_user_id,
+            public_key=body.public_key,
+            prime_ssh_key_id=prime_key_id,
+            aws_secret_arn=secret_arn,
+            created_at=datetime.now(timezone.utc),
         )
-
-    ssh_key = UserSshKey(
-        clerk_user_id=clerk_user_id,
-        public_key=body.public_key,
-        prime_ssh_key_id=key_id,
-        aws_secret_arn=secret_arn,
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(ssh_key)
-    await db.commit()
-    await db.refresh(ssh_key)
-
-    return ssh_key
+        db.add(ssh_key)
+        await db.commit()
+        await db.refresh(ssh_key)
+        logger.info(f"Successfully created SSH key record for user {clerk_user_id}")
+        return ssh_key
+    except Exception as exc:
+        logger.error(f"Failed to save SSH key to database: {exc}")
+        # Clean up both AWS and Prime Intellect if DB save fails
+        if secret_arn:
+            try:
+                delete_private_key_secret(secret_arn)
+            except SecretsManagerError:
+                pass
+        if prime_key_id:
+            try:
+                await delete_prime_ssh_key(prime_key_id)
+            except PrimeIntellectAPIError:
+                pass
+        raise HTTPException(status_code=500, detail=f"Failed to save SSH key: {str(exc)}")
