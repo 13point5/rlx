@@ -156,11 +156,13 @@ export interface RunTerminateResponse {
 export interface SSHKeyStatus {
   configured: boolean;
   keys: SSHKeyResponse[];
+  aws_region?: string | null;
 }
 
 export interface SSHKeyResponse {
   id: number;
   public_key: string;
   prime_ssh_key_id: string;
+  aws_secret_arn: string;
   created_at: string;
 }
