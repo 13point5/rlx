@@ -126,4 +126,50 @@
   body {
     @apply bg-background text-foreground font-mono;
   }
+
+  /* Custom scrollbar styles for dark theme */
+  * {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.4 0 0) oklch(0.2 0 0);
+  }
+
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: oklch(0.2 0 0);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: oklch(0.4 0 0);
+    border-radius: 4px;
+    border: 1px solid oklch(0.2 0 0);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.5 0 0);
+  }
+
+  /* Light mode scrollbar (if needed) */
+  :root:not(.dark) * {
+    scrollbar-color: oklch(0.7 0 0) oklch(0.95 0 0);
+  }
+
+  :root:not(.dark) *::-webkit-scrollbar-track {
+    background: oklch(0.95 0 0);
+  }
+
+  :root:not(.dark) *::-webkit-scrollbar-thumb {
+    background: oklch(0.7 0 0);
+    border: 1px solid oklch(0.95 0 0);
+  }
+
+  :root:not(.dark) *::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.6 0 0);
+  }
 }
