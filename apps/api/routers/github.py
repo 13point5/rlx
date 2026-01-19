@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import GitHubConnection, Project, get_db
-from deps import CurrentUser, DbSession
+from deps import CurrentUser, DbSession, get_github_connection, get_valid_github_token
 from services import github as github_service
 
 load_dotenv()
@@ -143,20 +143,8 @@ async def owners(user: CurrentUser, db: DbSession):
     Returns a list of owners (user first, then orgs) that can be used in the owner dropdown.
     """
     clerk_user_id = user.get("sub")
-
-    result = await db.execute(
-        select(GitHubConnection).where(GitHubConnection.clerk_user_id == clerk_user_id)
-    )
-    connection = result.scalar_one_or_none()
-
-    if not connection:
-        raise HTTPException(status_code=404, detail="GitHub not connected")
-
-    access_token = await github_service.get_valid_token(connection, db)
-    if not access_token:
-        await db.delete(connection)
-        await db.commit()
-        raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
+    connection = await get_github_connection(clerk_user_id, db)
+    access_token = await get_valid_github_token(connection, db)
 
     try:
         # Fetch user info
@@ -220,19 +208,8 @@ async def repos(
     if per_page > 100:
         per_page = 100
 
-    result = await db.execute(
-        select(GitHubConnection).where(GitHubConnection.clerk_user_id == clerk_user_id)
-    )
-    connection = result.scalar_one_or_none()
-
-    if not connection:
-        raise HTTPException(status_code=404, detail="GitHub not connected")
-
-    access_token = await github_service.get_valid_token(connection, db)
-    if not access_token:
-        await db.delete(connection)
-        await db.commit()
-        raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
+    connection = await get_github_connection(clerk_user_id, db)
+    access_token = await get_valid_github_token(connection, db)
 
     # Get already imported repo IDs for this user
     existing_projects_result = await db.execute(

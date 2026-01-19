@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import GitHubConnection, get_db
+from sqlalchemy import select
 
 load_dotenv()
 
@@ -52,3 +53,44 @@ async def get_current_user(request: Request) -> dict:
 # Type aliases for dependencies
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+# =============================================================================
+# GitHub Connection Helpers
+# =============================================================================
+
+
+async def get_github_connection(clerk_user_id: str, db: AsyncSession) -> GitHubConnection:
+    """Get the user's GitHub connection or raise 404."""
+    result = await db.execute(
+        select(GitHubConnection).where(GitHubConnection.clerk_user_id == clerk_user_id)
+    )
+    connection = result.scalar_one_or_none()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="GitHub not connected")
+
+    return connection
+
+
+async def get_valid_github_token(
+    connection: GitHubConnection, db: AsyncSession
+) -> str:
+    """
+    Get a valid GitHub access token or raise 401.
+
+    If the token is expired and cannot be refreshed, the connection is deleted.
+    """
+    # Import here to avoid circular imports
+    from services import github as github_service
+
+    access_token = await github_service.get_valid_token(connection, db)
+
+    if not access_token:
+        await db.delete(connection)
+        await db.commit()
+        raise HTTPException(
+            status_code=401, detail="GitHub token expired. Please reconnect."
+        )
+
+    return access_token
