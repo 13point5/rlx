@@ -22,6 +22,21 @@ class PrimeIntellectAPIError(Exception):
         self.message = message
 
 
+def normalize_pod_response(response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize Prime Intellect pod response to consistent keys.
+
+    The API returns inconsistent key names (id/podId/pod_id, sshConnection/ssh_connection).
+    This normalizes them to snake_case for internal use.
+    """
+    return {
+        "pod_id": response.get("id") or response.get("podId") or response.get("pod_id"),
+        "status": response.get("status"),
+        "ssh_connection": response.get("sshConnection") or response.get("ssh_connection"),
+        "ip": response.get("ip"),
+    }
+
+
 async def _get_headers() -> Dict[str, str]:
     api_key = os.getenv("PRIME_INTELLECT_API_KEY")
     if not api_key:

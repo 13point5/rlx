@@ -13,6 +13,7 @@ from services.prime_intellect import (
     create_pod,
     delete_pod,
     fetch_pod_status,
+    normalize_pod_response,
 )
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -85,9 +86,7 @@ async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
     run = result.scalar_one_or_none()
 
     if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     return run
 
@@ -97,9 +96,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     clerk_user_id = user.get("sub")
 
     project_result = await db.execute(
-        select(Project).where(
-            Project.id == body.project_id, Project.clerk_user_id == clerk_user_id
-        )
+        select(Project).where(Project.id == body.project_id, Project.clerk_user_id == clerk_user_id)
     )
     project = project_result.scalar_one_or_none()
 
@@ -132,15 +129,12 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     }
 
     try:
-        pod_response = await create_pod(payload)
+        raw_response = await create_pod(payload)
     except PrimeIntellectAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
-    pod_id = (
-        pod_response.get("id")
-        or pod_response.get("podId")
-        or pod_response.get("pod_id")
-    )
+    pod_response = normalize_pod_response(raw_response)
+    pod_id = pod_response.get("pod_id")
 
     if not pod_id:
         raise HTTPException(
@@ -230,29 +224,23 @@ async def get_runs_status(
             detail="Prime Intellect did not return pod status",
         )
 
-    status_map = {
-        entry.get("podId") or entry.get("pod_id"): entry for entry in status_entries
-    }
+    # Normalize entries and create a map keyed by pod_id
+    normalized_entries = [normalize_pod_response(entry) for entry in status_entries]
+    status_map = {entry["pod_id"]: entry for entry in normalized_entries if entry["pod_id"]}
 
     response: dict[int, RunStatusItem] = {}
 
     for run in runs:
         if run.status == RunStatus.TERMINATED:
-            response[run.id] = RunStatusItem(
-                status=run.status, ssh_connection=None, ip=None
-            )
+            response[run.id] = RunStatusItem(status=run.status, ssh_connection=None, ip=None)
             continue
 
         status_data = status_map.get(run.pod_id)
         if not status_data:
-            response[run.id] = RunStatusItem(
-                status=run.status, ssh_connection=None, ip=None
-            )
+            response[run.id] = RunStatusItem(status=run.status, ssh_connection=None, ip=None)
             continue
         status_value = status_data.get("status") or run.status
-        ssh_connection = status_data.get("sshConnection") or status_data.get(
-            "ssh_connection"
-        )
+        ssh_connection = status_data.get("ssh_connection")
         ip_address = status_data.get("ip")
 
         run.status = status_value
@@ -306,9 +294,7 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
             detail={
                 "message": message,
                 "last_known_status": run.status,
-                "last_updated_at": run.updated_at.isoformat()
-                if run.updated_at
-                else None,
+                "last_updated_at": run.updated_at.isoformat() if run.updated_at else None,
             },
         )
 
@@ -317,14 +303,15 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     except PrimeIntellectAPIError as exc:
         _raise_prime_error(exc.message, exc.status_code)
 
-    status_data = _extract_status_payload(status_payload)
+    raw_status_data = _extract_status_payload(status_payload)
 
-    if not status_data:
+    if not raw_status_data:
         _raise_prime_error(
             "Prime Intellect did not return pod status",
             status.HTTP_502_BAD_GATEWAY,
         )
 
+    status_data = normalize_pod_response(raw_status_data)
     status_value = status_data.get("status")
     if not status_value:
         _raise_prime_error(
@@ -332,9 +319,7 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
             status.HTTP_502_BAD_GATEWAY,
         )
 
-    ssh_connection = status_data.get("sshConnection") or status_data.get(
-        "ssh_connection"
-    )
+    ssh_connection = status_data.get("ssh_connection")
     ip_address = status_data.get("ip")
 
     run.status = status_value
