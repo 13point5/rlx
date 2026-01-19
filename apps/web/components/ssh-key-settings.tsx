@@ -629,9 +629,7 @@ export function SSHKeySettings() {
 
   // Fetch keys on mount
   useEffect(() => {
-    (async () => {
-      await fetchKeys();
-    })();
+    fetchKeys();
   }, []);
 
   async function handleGenerate() {
