@@ -166,27 +166,28 @@ export function SSHKeySettings() {
     await checkKeyStatus();
   }
 
-  async function handleDelete() {
+  async function handleDelete(keyId: number) {
     const confirmed = window.confirm(
-      "Are you sure you want to delete your SSH key? This action cannot be undone."
+      "Are you sure you want to delete this SSH key? This action cannot be undone."
     );
 
     if (!confirmed) return;
 
-    setState("loading");
     setError(null);
 
-    const result = await deleteSSHKey();
+    const result = await deleteSSHKey(keyId);
 
     if (!result.success) {
-      setState("connected");
-      setError(result.error || "Failed to delete SSH key");
+      // Convert error to string if it's an object
+      const errorMessage = typeof result.error === "string" 
+        ? result.error 
+        : JSON.stringify(result.error);
+      setError(errorMessage || "Failed to delete SSH key");
       return;
     }
 
-    setPublicKey(null);
-    setCreatedAt(null);
-    setState("disconnected");
+    // Refresh the list after successful deletion
+    await checkKeyStatus();
   }
 
   function handleCopyPrivateKey() {
@@ -369,7 +370,9 @@ export function SSHKeySettings() {
               >
                 <Plus className="size-5" />
                 <span className="font-medium">
-                  {state === "generating" ? "Generating..." : "Generate New Key"}
+                  {state === "generating"
+                    ? "Generating..."
+                    : "Generate New Key"}
                 </span>
                 <span className="text-xs text-muted-foreground font-normal">
                   Create a new Ed25519 key pair
