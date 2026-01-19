@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -58,10 +57,45 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
     )
     ssh_keys = result.scalars().all()
 
+    # Log secret ARNs for debugging
+    for key in ssh_keys:
+        logger.info(f"User {clerk_user_id} has key {key.id} with AWS secret ARN: {key.aws_secret_arn}")
+
     return SshKeyStatusResponse(
         configured=len(ssh_keys) > 0,
         keys=[SshKeyResponse.model_validate(key) for key in ssh_keys],
     )
+
+
+@router.get("/debug", response_model=dict)
+async def debug_ssh_keys(user: CurrentUser, db: DbSession) -> dict:
+    """Debug endpoint to see stored SSH key details including AWS secret ARNs."""
+    clerk_user_id = user.get("sub")
+    
+    result = await db.execute(
+        select(UserSshKey)
+        .where(UserSshKey.clerk_user_id == clerk_user_id)
+        .order_by(UserSshKey.created_at.desc())
+    )
+    ssh_keys = result.scalars().all()
+    
+    import os
+    aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "not set"
+    
+    return {
+        "user_id": clerk_user_id,
+        "aws_region": aws_region,
+        "keys": [
+            {
+                "id": key.id,
+                "aws_secret_arn": key.aws_secret_arn,
+                "prime_ssh_key_id": key.prime_ssh_key_id,
+                "created_at": key.created_at.isoformat(),
+                "public_key_preview": key.public_key[:50] + "...",
+            }
+            for key in ssh_keys
+        ],
+    }
 
 
 @router.get("/list-prime-keys", response_model=dict)
@@ -97,16 +131,12 @@ async def delete_ssh_key(key_id: int, user: CurrentUser, db: DbSession) -> None:
     clerk_user_id = user.get("sub")
 
     result = await db.execute(
-        select(UserSshKey).where(
-            UserSshKey.id == key_id, UserSshKey.clerk_user_id == clerk_user_id
-        )
+        select(UserSshKey).where(UserSshKey.id == key_id, UserSshKey.clerk_user_id == clerk_user_id)
     )
     ssh_key = result.scalar_one_or_none()
 
     if not ssh_key:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="SSH key not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSH key not found")
 
     # Delete from Prime Intellect
     try:
@@ -138,6 +168,7 @@ async def upload_ssh_key_route(
     try:
         # Generate unique secret name with timestamp to avoid conflicts
         import time
+
         secret_name = f"rlx/user-ssh-key/{clerk_user_id}/{int(time.time())}"
         logger.info(f"Creating AWS secret for user {clerk_user_id}")
         secret_arn = create_private_key_secret(
@@ -151,6 +182,7 @@ async def upload_ssh_key_route(
     try:
         # Generate a name for the key (Prime Intellect requires it)
         import time
+
         key_name = f"rlx-key-{int(time.time())}"
         logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id}")
         prime_key = await upload_prime_ssh_key(body.public_key, name=key_name)
