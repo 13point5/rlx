@@ -942,6 +942,55 @@ export async function getRunStatuses(runIds: number[]): Promise<{
 // SSH Key Actions
 // =============================================================================
 
+export async function generateSSHKeyPair(): Promise<{
+  success: boolean;
+  data?: {
+    publicKey: string;
+    privateKey: string;
+  };
+  error?: string;
+}> {
+  // Import crypto dynamically since this is a server action
+  const { generateKeyPairSync } = await import("crypto");
+
+  try {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
+      publicKeyEncoding: {
+        type: "spki",
+        format: "pem",
+      },
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+      },
+    });
+
+    // Convert PEM to OpenSSH format for the public key
+    const { createPublicKey } = await import("crypto");
+    const keyObject = createPublicKey(publicKey);
+    const sshPublicKey = keyObject.export({ type: "spki", format: "der" });
+    
+    // Ed25519 public key in OpenSSH format
+    const keyType = "ssh-ed25519";
+    const keyData = sshPublicKey.subarray(12); // Skip the SPKI header for Ed25519
+    const opensshPublicKey = `${keyType} ${keyData.toString("base64")} rlx-generated`;
+
+    return {
+      success: true,
+      data: {
+        publicKey: opensshPublicKey,
+        privateKey,
+      },
+    };
+  } catch (error) {
+    console.error("Error generating SSH key pair:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to generate key pair",
+    };
+  }
+}
+
 export async function getSSHKeyStatus(): Promise<{
   success: boolean;
   data?: SSHKeyStatus;
