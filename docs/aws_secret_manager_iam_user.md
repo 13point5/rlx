@@ -17,13 +17,16 @@
       "Action": [
         "secretsmanager:CreateSecret",
         "secretsmanager:DeleteSecret",
-        "secretsmanager:GetSecretValue"
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
       ],
       "Resource": "arn:aws:secretsmanager:*:*:secret:rlx/user-ssh-key/*"
     }
   ]
 }
 ```
+
+**Note:** The `DescribeSecret` permission is optional but recommended. If you don't include it, the system will still work but will handle orphaned secrets less efficiently (it will try to create and handle the "already exists" error instead of checking first).
 
 6. Name the policy `RLXSecretsManagerPolicy` and create it
 7. Back in the user creation, refresh and attach `RLXSecretsManagerPolicy`
