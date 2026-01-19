@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import GitHubConnection
+
+logger = logging.getLogger(__name__)
 
 
 # Custom exceptions for GitHub API errors
@@ -114,7 +117,8 @@ async def refresh_token(connection: GitHubConnection, db: AsyncSession) -> str |
         await db.commit()
         return connection.access_token
 
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to refresh GitHub token: {e}")
         return None
 
 
