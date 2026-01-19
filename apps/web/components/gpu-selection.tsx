@@ -61,12 +61,14 @@ function GpuSummaryCard({
       className={cn(
         "p-3 gap-3 rounded w-full cursor-pointer border border-border/90 bg-transparent transition-colors",
         !isSelected && "hover:border-border hover:bg-accent/40",
-        isSelected && "border-primary/70 bg-card"
+        isSelected && "border-primary/70 bg-primary/20"
       )}
       onClick={onClick}
     >
       <CardHeader className="flex flex-wrap items-center justify-between gap-3 px-0">
-        <CardTitle className="min-w-0 text-md font-semibold">{displayName}</CardTitle>
+        <CardTitle className="min-w-0 text-md font-semibold">
+          {displayName}
+        </CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {countEntries.length > 1 && (
             <Select value={selectedCount} onValueChange={onSelectCount}>
@@ -89,8 +91,11 @@ function GpuSummaryCard({
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-6 px-0 text-sm">
         <div className="flex items-center gap-2">
-          <ZapIcon className="size-3 text-amber-400" />
-          <span className="text-amber-400">Spot</span>
+          <div className="flex items-center gap-0.5">
+            <ZapIcon className="size-3 text-amber-400" />
+            <span className="text-amber-400">Spot</span>
+          </div>
+
           <span>
             {cheapest?.spotPrice !== null && cheapest?.spotPrice !== undefined
               ? `$${cheapest.spotPrice.toFixed(2)}`
@@ -121,7 +126,9 @@ export function GpuSelection({
   const entries = useMemo(() => Object.entries(summary || {}), [summary]);
 
   const getCountEntries = (countsRecord: Record<string, unknown>) =>
-    Object.entries(countsRecord).filter(([, value]) => typeof value === "object");
+    Object.entries(countsRecord).filter(
+      ([, value]) => typeof value === "object"
+    );
 
   // Get first GPU and count as defaults
   const firstGpuType = entries[0]?.[0];
@@ -148,12 +155,17 @@ export function GpuSelection({
     hasPendingSelection &&
     (pendingSelection!.gpu !== selectedGpuType ||
       pendingSelection!.count !== selectedGpuCount);
-  const optimisticGpu = isPendingSelection ? pendingSelection!.gpu : selectedGpuType;
-  const optimisticCount = isPendingSelection ? pendingSelection!.count : selectedGpuCount;
+  const optimisticGpu = isPendingSelection
+    ? pendingSelection!.gpu
+    : selectedGpuType;
+  const optimisticCount = isPendingSelection
+    ? pendingSelection!.count
+    : selectedGpuCount;
 
   const selectedEntry = entries.find(([gpuType]) => gpuType === optimisticGpu);
   const selectedCountsRecord =
-    (selectedEntry?.[1] as Record<string, unknown> | undefined) ?? firstGpuCounts;
+    (selectedEntry?.[1] as Record<string, unknown> | undefined) ??
+    firstGpuCounts;
   const selectedCountEntries = selectedCountsRecord
     ? getCountEntries(selectedCountsRecord)
     : [];
@@ -189,10 +201,12 @@ export function GpuSelection({
           <Select
             value={optimisticGpu}
             onValueChange={(gpuType) => {
-              const countsRecord = entries.find(([type]) => type === gpuType)?.[1] as
-                | Record<string, unknown>
-                | undefined;
-              const countEntries = countsRecord ? getCountEntries(countsRecord) : [];
+              const countsRecord = entries.find(
+                ([type]) => type === gpuType
+              )?.[1] as Record<string, unknown> | undefined;
+              const countEntries = countsRecord
+                ? getCountEntries(countsRecord)
+                : [];
               const defaultCount = countEntries[0]?.[0] || "";
               const effectiveCount = cardCounts[gpuType] || defaultCount;
 
@@ -275,7 +289,9 @@ export function GpuSelection({
                 setPendingSelection({ gpu: gpuType, count: val });
                 onSelectionChange?.(gpuType, val);
                 startTransition(() => {
-                  router.push(`?gpu=${gpuType}&count=${val}`, { scroll: false });
+                  router.push(`?gpu=${gpuType}&count=${val}`, {
+                    scroll: false,
+                  });
                 });
               }}
               isSelected={isSelected}
@@ -295,4 +311,3 @@ export function GpuSelection({
     </div>
   );
 }
-

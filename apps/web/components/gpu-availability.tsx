@@ -221,7 +221,7 @@ export function GpuAvailability({
                     className={cn(
                       "p-4 border border-border/90 rounded bg-transparent transition-colors cursor-pointer",
                       !isSelected && "hover:border-border hover:bg-accent/40",
-                      isSelected && "border-primary/70 bg-card"
+                      isSelected && "border-primary/70 bg-primary/20"
                     )}
                     data-instance-index={index}
                     onClick={() => {
@@ -257,13 +257,13 @@ export function GpuAvailability({
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             {instance.isSpot && (
                               <Badge
                                 variant="outline"
                                 className="bg-amber-500/20 text-amber-400 border-amber-500/50"
                               >
-                                <ZapIcon className="size-3 mr-1" />
+                                <ZapIcon className="size-3" />
                                 SPOT
                               </Badge>
                             )}
@@ -277,7 +277,7 @@ export function GpuAvailability({
                               variant="outline"
                               className="bg-sky-500/10 text-sky-400 border-sky-500/30"
                             >
-                              <ShieldCheckIcon className="size-3 mr-1" />
+                              <ShieldCheckIcon className="size-3" />
                               {instance.security.toUpperCase().replace("_", " ")}
                             </Badge>
                           </div>
