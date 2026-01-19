@@ -46,12 +46,14 @@ interface GeneratedKey {
 
 export function SSHKeySettings() {
   const [state, setState] = useState<ConnectionState>("loading");
-  const [keys, setKeys] = useState<Array<{
-    id: number;
-    public_key: string;
-    aws_secret_arn: string;
-    created_at: string;
-  }>>([]);
+  const [keys, setKeys] = useState<
+    Array<{
+      id: number;
+      public_key: string;
+      aws_secret_arn: string;
+      created_at: string;
+    }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<UploadMode>(null);
   const [generatedKey, setGeneratedKey] = useState<GeneratedKey | null>(null);
@@ -81,7 +83,11 @@ export function SSHKeySettings() {
       return;
     }
 
-    if (result.data?.configured && result.data.keys && result.data.keys.length > 0) {
+    if (
+      result.data?.configured &&
+      result.data.keys &&
+      result.data.keys.length > 0
+    ) {
       setState("connected");
       setKeys(result.data.keys);
       setAwsRegion(result.data.aws_region || null);
@@ -214,7 +220,6 @@ export function SSHKeySettings() {
     setError(null);
   }
 
-
   function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -281,17 +286,16 @@ export function SSHKeySettings() {
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="space-y-3">
             {keys.map((key) => (
-              <div
-                key={key.id}
-                className="border rounded-lg p-3 space-y-2"
-              >
+              <div key={key.id} className="border rounded-lg p-3 space-y-2">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Public Key</Label>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleCopyPublicKey(key.public_key, key.id)}
+                      onClick={() =>
+                        handleCopyPublicKey(key.public_key, key.id)
+                      }
                       className="h-7"
                     >
                       {copiedKeyId === key.id ? (
@@ -333,7 +337,8 @@ export function SSHKeySettings() {
                       </code>
                       {awsRegion && (
                         <p className="text-xs text-muted-foreground">
-                          AWS Region: <span className="font-mono">{awsRegion}</span>
+                          AWS Region:{" "}
+                          <span className="font-mono">{awsRegion}</span>
                         </p>
                       )}
                     </div>

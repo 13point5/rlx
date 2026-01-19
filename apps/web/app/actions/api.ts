@@ -375,12 +375,16 @@ export async function getGpuAvailability(params?: {
 
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set("page", params.page.toString());
-    if (params?.page_size) searchParams.set("page_size", params.page_size.toString());
+    if (params?.page_size)
+      searchParams.set("page_size", params.page_size.toString());
     if (params?.gpu_type) searchParams.set("gpu_type", params.gpu_type);
-    if (params?.gpu_count) searchParams.set("gpu_count", params.gpu_count.toString());
+    if (params?.gpu_count)
+      searchParams.set("gpu_count", params.gpu_count.toString());
     if (params?.socket) searchParams.set("socket", params.socket);
     if (params?.security) searchParams.set("security", params.security);
-    params?.regions?.forEach((region) => searchParams.append("regions", region));
+    params?.regions?.forEach((region) =>
+      searchParams.append("regions", region)
+    );
 
     const url = `${API_BASE_URL}/api/compute/availability/gpus${
       searchParams.toString() ? `?${searchParams.toString()}` : ""
@@ -400,7 +404,8 @@ export async function getGpuAvailability(params?: {
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -429,11 +434,14 @@ export async function getGpuSummary(): Promise<{
       return { success: false, error: "Could not get session token" };
     }
 
-    const response = await axios.get(`${API_BASE_URL}/api/compute/availability/gpu-summary`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.get(
+      `${API_BASE_URL}/api/compute/availability/gpu-summary`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
     return { success: true, data: response.data };
   } catch (error) {
@@ -443,7 +451,8 @@ export async function getGpuSummary(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -695,7 +704,8 @@ export async function startRun(input: {
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -738,7 +748,8 @@ export async function getRun(runId: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -767,11 +778,14 @@ export async function getRunStatus(runId: number): Promise<{
       return { success: false, error: "Could not get session token" };
     }
 
-    const response = await axios.get(`${API_BASE_URL}/api/runs/${runId}/status`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.get(
+      `${API_BASE_URL}/api/runs/${runId}/status`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
     return { success: true, status: response.data };
   } catch (error) {
@@ -787,7 +801,8 @@ export async function getRunStatus(runId: number): Promise<{
       }
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -834,7 +849,8 @@ export async function terminateRun(runId: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -880,7 +896,8 @@ export async function getProjectRuns(projectId: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -927,7 +944,8 @@ export async function getRunStatuses(runIds: number[]): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -969,7 +987,7 @@ export async function generateSSHKeyPair(): Promise<{
     const { createPublicKey } = await import("crypto");
     const keyObject = createPublicKey(publicKey);
     const sshPublicKey = keyObject.export({ type: "spki", format: "der" });
-    
+
     // Ed25519 public key in OpenSSH format
     const keyType = "ssh-ed25519";
     const keyData = sshPublicKey.subarray(12); // Skip the SPKI header for Ed25519
@@ -986,7 +1004,8 @@ export async function generateSSHKeyPair(): Promise<{
     console.error("Error generating SSH key pair:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to generate key pair",
+      error:
+        error instanceof Error ? error.message : "Failed to generate key pair",
     };
   }
 }
@@ -1023,7 +1042,8 @@ export async function getSSHKeyStatus(): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -1076,7 +1096,8 @@ export async function uploadSSHKey(
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -1118,7 +1139,8 @@ export async function deleteSSHKey(keyId: number): Promise<{
       const detail = error.response?.data?.detail;
       return {
         success: false,
-        error: detail || `API error: ${error.response?.status || error.message}`,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
       };
     }
 
@@ -1128,4 +1150,3 @@ export async function deleteSSHKey(keyId: number): Promise<{
     };
   }
 }
-

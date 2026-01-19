@@ -100,6 +100,18 @@ async def list_prime_ssh_keys(limit: int = 100) -> Dict[str, Any]:
     return _handle_response(response)
 
 
+async def set_prime_ssh_key_primary(key_id: str) -> Dict[str, Any]:
+    """Set an SSH key as primary in Prime Intellect."""
+    headers = await _get_headers()
+    url = f"{BASE_URL}/api/v1/ssh_keys/{key_id}/primary"
+
+    logger.info(f"Setting SSH key {key_id} as primary in Prime Intellect")
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, follow_redirects=True) as client:
+        response = await client.patch(url, headers=headers)
+
+    return _handle_response(response)
+
+
 async def delete_prime_ssh_key(key_id: str) -> Dict[str, Any]:
     """Delete an SSH key from Prime Intellect."""
     headers = await _get_headers()
