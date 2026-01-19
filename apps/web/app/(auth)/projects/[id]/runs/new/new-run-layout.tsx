@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import {
   HydrationBoundary,
   QueryClient,
@@ -8,13 +9,28 @@ import {
   type DehydratedState,
 } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { GpuAvailability } from "@/components/gpu-availability";
-import { GpuSelection } from "@/components/gpu-selection";
+import { GpuAvailabilitySkeleton, GpuSelectionSkeleton } from "./loading";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import type { GpuInstance, GpuSummaryData } from "@/lib/types";
 import { startRun } from "@/app/actions/api";
 import { RunFields } from "./run-fields";
+
+const GpuSelection = dynamic(
+  () =>
+    import("@/components/gpu-selection").then((mod) => ({
+      default: mod.GpuSelection,
+    })),
+  { loading: () => <GpuSelectionSkeleton /> }
+);
+
+const GpuAvailability = dynamic(
+  () =>
+    import("@/components/gpu-availability").then((mod) => ({
+      default: mod.GpuAvailability,
+    })),
+  { loading: () => <GpuAvailabilitySkeleton />, ssr: false }
+);
 
 interface SummaryResult {
   success: boolean;

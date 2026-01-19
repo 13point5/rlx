@@ -123,7 +123,9 @@ export function GpuAvailability({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg md:text-xl font-semibold">Available Instances</h2>
+          <h2 className="text-lg md:text-xl font-semibold">
+            Available Instances
+          </h2>
         </div>
         <p className="text-sm text-muted-foreground">
           Select a GPU configuration on the left to view available instances and
@@ -137,7 +139,9 @@ export function GpuAvailability({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg md:text-xl font-semibold">Available Instances</h2>
+          <h2 className="text-lg md:text-xl font-semibold">
+            Available Instances
+          </h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {[...Array(4)].map((_, i) => (
@@ -155,7 +159,9 @@ export function GpuAvailability({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg md:text-xl font-semibold">Available Instances</h2>
+          <h2 className="text-lg md:text-xl font-semibold">
+            Available Instances
+          </h2>
         </div>
         <p className="text-sm text-destructive">
           Error loading instances: {(error as Error).message}
@@ -181,11 +187,15 @@ export function GpuAvailability({
   return (
     <div className="space-y-4">
       <div className="flex items-baseline gap-3">
-        <h2 className="text-lg md:text-xl font-semibold">Available Instances</h2>
+        <h2 className="text-lg md:text-xl font-semibold">
+          Available Instances
+        </h2>
         {isUpdating ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
-          <span className="text-sm text-muted-foreground">({availabilityLabel})</span>
+          <span className="text-sm text-muted-foreground">
+            ({availabilityLabel})
+          </span>
         )}
       </div>
 
@@ -235,7 +245,8 @@ export function GpuAvailability({
                             <div className="space-y-1">
                               <div className="flex flex-col items-start gap-1 lg:flex-row lg:items-center lg:gap-2">
                                 <h3 className="font-bold text-base md:text-lg break-words">
-                                  {formatGpuName(instance.gpuType)} x{instance.gpuCount}
+                                  {formatGpuName(instance.gpuType)} x
+                                  {instance.gpuCount}
                                 </h3>
 
                                 <span className="flex items-center text-xs md:text-sm text-muted-foreground">
@@ -278,7 +289,9 @@ export function GpuAvailability({
                               className="bg-sky-500/10 text-sky-400 border-sky-500/30"
                             >
                               <ShieldCheckIcon className="size-3" />
-                              {instance.security.toUpperCase().replace("_", " ")}
+                              {instance.security
+                                .toUpperCase()
+                                .replace("_", " ")}
                             </Badge>
                           </div>
                         </div>
@@ -312,17 +325,23 @@ export function GpuAvailability({
                           </div>
                           <p className="font-medium text-sm md:text-base">
                             {instance.memory?.defaultCount || "N/A"}{" "}
-                            <span className="text-muted-foreground text-xs md:text-sm">GB</span>
+                            <span className="text-muted-foreground text-xs md:text-sm">
+                              GB
+                            </span>
                           </p>
                         </div>
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <HardDrive className="size-3 md:size-4" />
-                            <span className="text-xs md:text-sm">Disk size</span>
+                            <span className="text-xs md:text-sm">
+                              Disk size
+                            </span>
                           </div>
                           <p className="font-medium text-sm md:text-base">
                             {instance.disk?.defaultCount || "N/A"}{" "}
-                            <span className="text-muted-foreground text-xs md:text-sm">GB</span>
+                            <span className="text-muted-foreground text-xs md:text-sm">
+                              GB
+                            </span>
                           </p>
                         </div>
                       </div>
