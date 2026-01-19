@@ -20,10 +20,10 @@ export const HomePageLoading: Story = {
     <div className="space-y-6 w-full max-w-5xl mx-auto p-6">
       <PageHeading>Projects</PageHeading>
       
-      {/* Search and New Project skeleton */}
+      {/* Search and New Project skeleton - matches responsive layout */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <Skeleton className="h-8 flex-1" />
-        <Skeleton className="h-8 w-28" />
+        <Skeleton className="h-8 w-full sm:w-28" />
       </div>
 
       {/* Project cards skeleton */}
@@ -40,14 +40,18 @@ export const HomePageLoading: Story = {
 export const ProjectPageLoading: Story = {
   render: () => (
     <div className="space-y-4 w-full max-w-5xl mx-auto p-6">
-      {/* Tabs and New Run button */}
-      <div className="flex items-center gap-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-8 w-28" />
+      {/* Header with PageHeading */}
+      <div className="space-y-4">
+        <PageHeading>Runs</PageHeading>
+        {/* Tabs and New Run button - matches responsive layout */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-8 w-full sm:w-28" />
+        </div>
       </div>
 
       {/* Runs table */}
-      <div className="rounded-none border border-border">
+      <div className="border border-border overflow-hidden rounded-none">
         <div className="p-4">
           {/* Table header */}
           <div className="flex gap-8 pb-3 border-b border-border">
@@ -79,7 +83,7 @@ export const ProjectPageLoading: Story = {
   ),
 };
 
-// GPU card skeleton
+// GPU card skeleton - matches actual component border style
 function GpuCardSkeleton() {
   return (
     <div className="p-3 rounded-none border border-border space-y-3">
@@ -147,7 +151,7 @@ export const NewRunPageLoading: Story = {
       <div className="space-y-4">
         <PageHeading>New Run</PageHeading>
         <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="grid w-full gap-4 sm:grid-cols-3">
+          <div className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2 min-w-[180px]">
               <Skeleton className="h-4 w-20" />
               <Skeleton className="h-8 w-full" />

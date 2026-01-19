@@ -1,0 +1,374 @@
+{/* Component Pattern Documentation */}
+
+import { Meta } from "@storybook/blocks";
+
+<Meta title="Documentation/Component Patterns" />
+
+# Component Patterns
+
+This document outlines the component patterns, CSS tokens, and best practices used throughout this codebase, based on shadcn/ui conventions.
+
+## CSS Design Tokens
+
+Our design system uses CSS custom properties (tokens) defined in `globals.css`. These tokens automatically adapt to light/dark modes.
+
+### Color Tokens
+
+| Token | Usage |
+|-------|-------|
+| `--background` | Page/app background |
+| `--foreground` | Primary text color |
+| `--foreground-bright` | High-emphasis text (titles) |
+| `--card` | Card backgrounds |
+| `--card-foreground` | Card text |
+| `--popover` | Popover/dropdown backgrounds |
+| `--popover-foreground` | Popover text |
+| `--primary` | Primary actions/accents |
+| `--primary-foreground` | Text on primary background |
+| `--secondary` | Secondary elements |
+| `--secondary-foreground` | Text on secondary |
+| `--muted` | Muted backgrounds |
+| `--muted-foreground` | Muted text, descriptions |
+| `--accent` | Hover states, subtle highlights |
+| `--accent-foreground` | Text on accent |
+| `--destructive` | Error/danger states |
+| `--border` | Border colors |
+| `--input` | Input border/background |
+| `--ring` | Focus ring color |
+
+### Usage in Tailwind
+
+```tsx
+// Use color tokens via Tailwind classes
+<div className="bg-background text-foreground" />
+<p className="text-muted-foreground" />
+<button className="bg-primary text-primary-foreground" />
+<span className="text-destructive" />
+<div className="border-border" />
+```
+
+### Custom Tokens
+
+We've added a custom `--foreground-bright` token for high-emphasis headings:
+
+```tsx
+<h1 className="text-foreground-bright">Page Title</h1>
+```
+
+---
+
+## Component Patterns
+
+### 1. Data Slot Pattern
+
+All components use `data-slot` attributes for CSS targeting and debugging:
+
+```tsx
+function Button({ className, ...props }) {
+  return (
+    <button
+      data-slot="button"
+      className={cn("...", className)}
+      {...props}
+    />
+  );
+}
+```
+
+**Benefits:**
+- CSS can target components: `[data-slot="button"]`
+- Easier debugging in DevTools
+- Component composition with `has-data-[slot=...]`
+
+### 2. Variant Pattern with CVA
+
+Use `class-variance-authority` for components with multiple visual variants:
+
+```tsx
+import { cva, type VariantProps } from "class-variance-authority";
+
+const buttonVariants = cva(
+  // Base styles (always applied)
+  "inline-flex items-center justify-center text-sm font-medium transition-colors",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground",
+        outline: "border border-border bg-background hover:bg-muted",
+        ghost: "hover:bg-muted",
+        destructive: "bg-destructive/10 text-destructive",
+      },
+      size: {
+        default: "h-8 px-2.5",
+        sm: "h-7 px-2",
+        lg: "h-9 px-3",
+        icon: "size-8",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+function Button({
+  className,
+  variant,
+  size,
+  ...props
+}: React.ComponentProps<"button"> & VariantProps<typeof buttonVariants>) {
+  return (
+    <button
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+
+export { Button, buttonVariants };
+```
+
+**Key Points:**
+- Export both the component and variants (for extension)
+- Use `data-variant` and `data-size` for CSS targeting
+- Pass `className` to the CVA function for proper merging
+
+### 3. asChild Pattern (Polymorphic Components)
+
+Use Radix `Slot` for components that can render as different elements:
+
+```tsx
+import { Slot } from "@radix-ui/react-slot";
+
+function Button({
+  asChild = false,
+  ...props
+}: { asChild?: boolean } & React.ComponentProps<"button">) {
+  const Comp = asChild ? Slot : "button";
+  return <Comp data-slot="button" {...props} />;
+}
+
+// Usage:
+<Button>Click me</Button>
+
+// As link:
+<Button asChild>
+  <Link href="/home">Go Home</Link>
+</Button>
+```
+
+### 4. Compound Components Pattern
+
+For complex components, use compound patterns with shared context:
+
+```tsx
+// Card with multiple sub-components
+<Card size="sm">
+  <CardHeader>
+    <CardTitle>Title</CardTitle>
+    <CardDescription>Description</CardDescription>
+    <CardAction>
+      <Button variant="ghost" size="icon-sm">
+        <MoreHorizontal />
+      </Button>
+    </CardAction>
+  </CardHeader>
+  <CardContent>Content here</CardContent>
+  <CardFooter>Footer actions</CardFooter>
+</Card>
+```
+
+**Implementation uses:**
+- CSS `group/` classes for parent-child styling
+- `has-data-[slot=...]` for conditional styles
+- Shared size context via data attributes
+
+### 5. Icon Handling Pattern
+
+Icons use data attributes for flexible spacing:
+
+```tsx
+<Button>
+  <Plus data-icon="inline-start" />
+  Add Item
+</Button>
+
+<Button>
+  Continue
+  <ArrowRight data-icon="inline-end" />
+</Button>
+```
+
+Button styles respond to these:
+```css
+has-data-[icon=inline-start]:pl-2
+has-data-[icon=inline-end]:pr-2
+```
+
+---
+
+## Component Composition Guidelines
+
+### Building on Primitives
+
+Always compose from UI primitives rather than duplicating styles:
+
+```tsx
+// Good: Compose from primitives
+function ProjectCard({ project }) {
+  return (
+    <Card size="sm" className="hover:bg-accent/20">
+      <CardHeader>
+        <CardTitle>{project.name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Badge variant="outline">{project.status}</Badge>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Bad: Duplicating primitive styles
+function ProjectCard({ project }) {
+  return (
+    <div className="ring-foreground/10 bg-card text-card-foreground...">
+      {/* Duplicated Card styles */}
+    </div>
+  );
+}
+```
+
+### Creating Feature Components
+
+Feature components should:
+1. Accept `className` prop for customization
+2. Use `data-slot` for identification
+3. Compose primitives internally
+4. Keep business logic separate
+
+```tsx
+interface ProjectCardProps {
+  project: Project;
+  className?: string;
+}
+
+function ProjectCard({ project, className }: ProjectCardProps) {
+  return (
+    <Card
+      data-slot="project-card"
+      className={cn("transition-colors hover:bg-accent/20", className)}
+      size="sm"
+    >
+      {/* ... */}
+    </Card>
+  );
+}
+```
+
+---
+
+## Loading State Patterns
+
+### Skeleton Matching
+
+Loading states should **exactly match** the layout of the actual component:
+
+```tsx
+// Actual component
+<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+  <Input className="flex-1" />
+  <Button className="sm:w-auto">Add</Button>
+</div>
+
+// Loading skeleton - MUST match responsive classes
+<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+  <Skeleton className="h-8 flex-1" />
+  <Skeleton className="h-8 w-full sm:w-28" />
+</div>
+```
+
+### Skeleton Components
+
+Export skeleton variants alongside components:
+
+```tsx
+export function ProjectCard({ project }) {
+  return <Card>...</Card>;
+}
+
+export function ProjectCardSkeleton() {
+  return (
+    <Card className="...">
+      <Skeleton className="..." />
+    </Card>
+  );
+}
+```
+
+---
+
+## Status Badge Pattern
+
+For status indicators, use consistent color coding:
+
+```tsx
+const statusColors = {
+  active: "bg-green-500/10 text-green-500 border-green-500/30",
+  pending: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+  error: "bg-red-500/10 text-red-500 border-red-500/30",
+  stopped: "bg-gray-500/10 text-gray-500 border-gray-500/30",
+};
+
+function StatusBadge({ status }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-none border px-2 py-0.5 text-xs",
+        statusColors[status] ?? statusColors.pending
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+```
+
+---
+
+## Best Practices
+
+### Do:
+- ✅ Use design tokens (`bg-primary`, not `bg-blue-500`)
+- ✅ Add `data-slot` to all components
+- ✅ Export variant definitions with components
+- ✅ Match loading states to actual layouts
+- ✅ Use `cn()` for className merging
+- ✅ Accept and spread `className` prop
+
+### Don't:
+- ❌ Hardcode colors (`bg-[#1a1a1a]`)
+- ❌ Duplicate primitive component styles
+- ❌ Create loading states without checking actual layout
+- ❌ Use inline styles when tokens exist
+- ❌ Forget responsive classes in skeletons
+
+---
+
+## File Organization
+
+```
+components/
+├── ui/                    # Primitives (Button, Card, Input...)
+│   ├── button.tsx
+│   ├── button.stories.tsx # Co-located stories
+│   └── ...
+├── [feature].tsx          # Composed components
+├── [feature].stories.tsx  # Feature stories
+└── ...
+```
+
+Stories are co-located with their components for discoverability.

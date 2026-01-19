@@ -9,9 +9,9 @@ export default function HomeLoading() {
       <PageHeading>Projects</PageHeading>
 
       {/* Search and New Project skeleton */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <Skeleton className="h-8 flex-1" />
-        <Skeleton className="h-8 w-28" />
+        <Skeleton className="h-8 w-full sm:w-28" />
       </div>
 
       {/* Project cards skeleton */}

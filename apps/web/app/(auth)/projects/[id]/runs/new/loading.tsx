@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function GpuCardSkeleton() {
   return (
-    <div className="p-3 rounded-none border space-y-3">
+    <div className="p-3 rounded-none border border-border space-y-3">
       <div className="flex items-center justify-between">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-8 w-20" />
@@ -24,7 +24,7 @@ function GpuCardSkeleton() {
 
 function InstanceCardSkeleton() {
   return (
-    <div className="p-4 border rounded-none space-y-4">
+    <div className="p-4 border border-border rounded-none space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-2">
@@ -97,7 +97,7 @@ export default function NewRunLoading() {
       <div className="space-y-4">
         <PageHeading>New Run</PageHeading>
         <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="grid w-full gap-4 sm:grid-cols-3">
+          <div className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2 min-w-[180px]">
               <Skeleton className="h-4 w-20" />
               <Skeleton className="h-8 w-full" />
