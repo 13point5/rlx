@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Project, Run, RunStatus
+from database import Job, JobStatus, JobType, Project, Run, RunStatus
 from deps import CurrentUser, DbSession
 from services.prime_intellect import (
     DEFAULT_IMAGE,
@@ -167,6 +167,39 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     await db.commit()
     await db.refresh(run)
 
+    # Create initial jobs for the run
+    # Job 1: Clone the repository
+    repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}.git"
+    clone_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.CLONE_REPO,
+        job_config={
+            "repo_url": repo_url,
+            "branch": body.branch,
+            "target_dir": "/workspace/repo",
+            "depth": 1,  # Shallow clone for speed
+        },
+        status=JobStatus.PENDING,
+        sequence=0,
+    )
+    db.add(clone_job)
+
+    # Job 2: List files after clone
+    list_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.LIST_FILES,
+        job_config={
+            "target_dir": "/workspace/repo",
+        },
+        status=JobStatus.PENDING,
+        sequence=1,
+    )
+    db.add(list_job)
+
+    await db.commit()
+
     return run
 
 
@@ -321,9 +354,23 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     ssh_connection = status_data.get("ssh_connection")
     ip_address = status_data.get("ip")
 
+    # Check if status changed to ACTIVE
+    previous_status = run.status
     run.status = status_value
     run.updated_at = datetime.now(timezone.utc)
     await db.commit()
+
+    # Trigger job processing if pod just became active
+    if previous_status != RunStatus.ACTIVE and status_value == RunStatus.ACTIVE:
+        try:
+            from celery_app.tasks.pod_tasks import on_pod_ready
+
+            on_pod_ready.delay(run_id)
+        except Exception as e:
+            # Log but don't fail the status request
+            import logging
+
+            logging.warning(f"Failed to trigger job processing for run {run_id}: {e}")
 
     return RunStatusResponse(
         status=status_value,

@@ -66,6 +66,37 @@ def create_private_key_secret(
     return arn
 
 
+def get_private_key_secret(secret_arn: str) -> str:
+    """
+    Retrieve a private key from AWS Secrets Manager.
+    
+    Args:
+        secret_arn: The ARN of the secret to retrieve
+        
+    Returns:
+        The private key string
+        
+    Raises:
+        SecretsManagerError: If the secret cannot be retrieved
+    """
+    client = _get_client()
+    try:
+        logger.info(f"Retrieving secret {secret_arn}")
+        response = client.get_secret_value(SecretId=secret_arn)
+        secret_string = response.get("SecretString")
+        if not secret_string:
+            raise SecretsManagerError("Secret does not contain a string value")
+        return secret_string
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        error_message = exc.response.get("Error", {}).get("Message", str(exc))
+        logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
+        raise SecretsManagerError(error_message)
+    except BotoCoreError as exc:
+        logger.error(f"AWS BotoCore error: {exc}")
+        raise SecretsManagerError(str(exc))
+
+
 def delete_private_key_secret(secret_arn: str) -> None:
     """Delete a secret from AWS Secrets Manager."""
     client = _get_client()
