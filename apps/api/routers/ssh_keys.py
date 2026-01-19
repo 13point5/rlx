@@ -1,4 +1,6 @@
 import logging
+import os
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
@@ -65,8 +67,6 @@ async def get_ssh_key_status(user: CurrentUser, db: DbSession) -> SshKeyStatusRe
             f"User {clerk_user_id} has key {key.id} with AWS secret ARN: {key.aws_secret_arn}"
         )
 
-    import os
-
     aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
 
     return SshKeyStatusResponse(
@@ -118,8 +118,6 @@ async def upload_ssh_key_route(
     secret_arn = None
     try:
         # Generate unique secret name with timestamp to avoid conflicts
-        import time
-
         secret_name = f"rlx/user-ssh-key/{clerk_user_id}/{int(time.time())}"
         logger.info(f"Creating AWS secret for user {clerk_user_id}")
         secret_arn = create_private_key_secret(
@@ -132,7 +130,6 @@ async def upload_ssh_key_route(
     prime_key_id = None
     try:
         # Prime Intellect requires a name field, so generate one if user didn't provide
-        import time
         key_name = body.name or f"rlx-key-{int(time.time())}"
         logger.info(f"Uploading public key to Prime Intellect for user {clerk_user_id} with name: {key_name}")
         prime_key = await upload_prime_ssh_key(body.public_key, name=key_name)
