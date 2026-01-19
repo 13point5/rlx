@@ -70,14 +70,15 @@ async def upload_prime_ssh_key(
     public_key: str, name: Optional[str] = None
 ) -> Dict[str, Any]:
     headers = await _get_headers()
-    url = f"{BASE_URL}/api/v1/ssh_keys"
+    # Use trailing slash to avoid redirects
+    url = f"{BASE_URL}/api/v1/ssh_keys/"
     payload = {"publicKey": public_key}
     if name:
         payload["name"] = name
 
     logger.info(f"Uploading SSH key to Prime Intellect: url={url}, payload_keys={list(payload.keys())}")
     
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, follow_redirects=True) as client:
         response = await client.post(url, headers=headers, json=payload)
     
     logger.info(f"Prime Intellect response: status={response.status_code}, headers={dict(response.headers)}")
@@ -89,9 +90,10 @@ async def upload_prime_ssh_key(
 async def list_prime_ssh_keys(limit: int = 100) -> Dict[str, Any]:
     """List SSH keys from Prime Intellect."""
     headers = await _get_headers()
-    url = f"{BASE_URL}/api/v1/ssh_keys"
+    # Use trailing slash to avoid redirects
+    url = f"{BASE_URL}/api/v1/ssh_keys/"
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, follow_redirects=True) as client:
         response = await client.get(url, headers=headers, params={"limit": limit})
 
     logger.info(f"Listing SSH keys from Prime Intellect: status={response.status_code}")
@@ -131,6 +133,15 @@ async def delete_pod(pod_id: str) -> Dict[str, Any]:
 
 
 def _handle_response(response: httpx.Response) -> Dict[str, Any]:
+    # Handle redirects (307, 308) - should not happen with follow_redirects=True, but check anyway
+    if response.status_code in (301, 302, 307, 308):
+        location = response.headers.get("Location")
+        logger.error(f"Prime Intellect API returned redirect: status={response.status_code}, location={location}")
+        raise PrimeIntellectAPIError(
+            response.status_code,
+            f"Unexpected redirect from Prime Intellect API. Location: {location}",
+        )
+
     if response.status_code >= 400:
         try:
             data = response.json()
