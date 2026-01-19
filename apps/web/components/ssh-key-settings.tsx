@@ -51,14 +51,18 @@ interface GeneratedKey {
 
 export function SSHKeySettings() {
   const [state, setState] = useState<ConnectionState>("loading");
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [keys, setKeys] = useState<Array<{
+    id: number;
+    public_key: string;
+    created_at: string;
+  }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<UploadMode>(null);
   const [generatedKey, setGeneratedKey] = useState<GeneratedKey | null>(null);
   const [privateKeySaved, setPrivateKeySaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [publicKeyCopied, setPublicKeyCopied] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   
   // Orphaned keys management
   const [showOrphanedKeys, setShowOrphanedKeys] = useState(false);
@@ -91,12 +95,12 @@ export function SSHKeySettings() {
       return;
     }
 
-    if (result.data?.configured) {
+    if (result.data?.configured && result.data.keys && result.data.keys.length > 0) {
       setState("connected");
-      setPublicKey(result.data.public_key || null);
-      setCreatedAt(result.data.created_at || null);
+      setKeys(result.data.keys);
     } else {
       setState("disconnected");
+      setKeys([]);
     }
   }
 
@@ -270,11 +274,10 @@ export function SSHKeySettings() {
     });
   }
 
-  function handleCopyPublicKey() {
-    if (!publicKey) return;
-    navigator.clipboard.writeText(publicKey);
-    setPublicKeyCopied(true);
-    setTimeout(() => setPublicKeyCopied(false), 2000);
+  function handleCopyPublicKey(key: string, keyId: number) {
+    navigator.clipboard.writeText(key);
+    setCopiedKeyId(keyId);
+    setTimeout(() => setCopiedKeyId(null), 2000);
   }
 
   // Loading state
@@ -403,51 +406,62 @@ export function SSHKeySettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="size-5" />
-              SSH Key Configured
+              SSH Keys ({keys.length})
             </CardTitle>
             <CardDescription>
-              Your SSH key is configured and ready for GPU pod access.
+              Your SSH keys are configured and ready for GPU pod access.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {publicKey && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Public Key</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCopyPublicKey}
-                    className="h-7"
-                  >
-                    {publicKeyCopied ? (
-                      <>
-                        <Check className="size-3 mr-1" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="size-3 mr-1" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
-                  {publicKey}
-                </code>
-              </div>
-            )}
-            {createdAt && (
-              <p className="text-sm text-muted-foreground">
-                Created on {formatDate(createdAt)}
-              </p>
-            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button variant="destructive" onClick={handleDelete}>
-              <Trash2 className="size-4 mr-2" />
-              Delete Key
-            </Button>
+            <div className="space-y-3">
+              {keys.map((key) => (
+                <div
+                  key={key.id}
+                  className="border rounded-lg p-3 space-y-2"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Public Key</Label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyPublicKey(key.public_key, key.id)}
+                        className="h-7"
+                      >
+                        {copiedKeyId === key.id ? (
+                          <>
+                            <Check className="size-3 mr-1" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="size-3 mr-1" />
+                            Copy
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <code className="block text-xs bg-muted p-2 rounded font-mono break-all">
+                      {key.public_key}
+                    </code>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Created on {formatDate(key.created_at)}
+                      </p>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDelete(key.id)}
+                      >
+                        <Trash2 className="size-3 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

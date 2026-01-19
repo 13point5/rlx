@@ -155,8 +155,7 @@ export interface RunTerminateResponse {
 // SSH Key Types
 export interface SSHKeyStatus {
   configured: boolean;
-  public_key?: string;
-  created_at?: string;
+  keys: SSHKeyResponse[];
 }
 
 export interface SSHKeyResponse {

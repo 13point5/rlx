@@ -138,8 +138,6 @@ class UserSshKey(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    __table_args__ = (UniqueConstraint("clerk_user_id", name="unique_user_ssh_key"),)
-
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency that provides a database session."""

@@ -43,53 +43,9 @@ def get_secret_arn_by_name(secret_name: str) -> Optional[str]:
 def create_private_key_secret(
     *, clerk_user_id: str, private_key: str, secret_name: Optional[str] = None
 ) -> str:
+    """Create a secret in AWS Secrets Manager. Secret name must be unique."""
     client = _get_client()
     name = secret_name or f"rlx/user-ssh-key/{clerk_user_id}"
-    
-    # Try to check if secret already exists (orphaned from previous failed attempt)
-    # If DescribeSecret permission is not available, we'll handle the "already exists" error during create
-    try:
-        existing_arn = get_secret_arn_by_name(name)
-        if existing_arn:
-            logger.warning(f"Secret {name} already exists, deleting orphaned secret")
-            try:
-                client.delete_secret(
-                    SecretId=existing_arn,
-                    ForceDeleteWithoutRecovery=True,
-                )
-                logger.info(f"Deleted orphaned secret {name}")
-            except ClientError as exc:
-                error_code = exc.response.get("Error", {}).get("Code")
-                error_msg = exc.response.get("Error", {}).get("Message", str(exc))
-                
-                # Handle case where secret is scheduled for deletion - restore it first
-                if "scheduled for deletion" in error_msg.lower() or error_code == "InvalidRequestException":
-                    logger.info(f"Secret {name} is scheduled for deletion, restoring it first")
-                    try:
-                        client.restore_secret(SecretId=existing_arn)
-                        logger.info(f"Restored secret {name}, now deleting")
-                        client.delete_secret(
-                            SecretId=existing_arn,
-                            ForceDeleteWithoutRecovery=True,
-                        )
-                        logger.info(f"Deleted restored secret {name}")
-                    except ClientError as restore_exc:
-                        logger.error(f"Failed to restore/delete secret: {restore_exc}")
-                        raise SecretsManagerError(
-                            f"Secret is scheduled for deletion and could not be restored/deleted: {restore_exc.response.get('Error', {}).get('Message', str(restore_exc))}"
-                        )
-                else:
-                    logger.error(f"Failed to delete orphaned secret: {exc}")
-                    raise SecretsManagerError(
-                        f"Secret already exists and could not be deleted: {error_msg}"
-                    )
-    except SecretsManagerError as exc:
-        # If DescribeSecret permission is missing, log and continue - we'll handle "already exists" error during create
-        if "is not authorized to perform: secretsmanager:DescribeSecret" in str(exc):
-            logger.info(f"DescribeSecret permission not available, will handle 'already exists' error during create")
-        else:
-            # Re-raise other errors
-            raise
     
     try:
         logger.info(f"Creating secret {name}")
@@ -97,49 +53,8 @@ def create_private_key_secret(
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code")
         error_message = exc.response.get("Error", {}).get("Message", str(exc))
-        
-        # Handle "already exists" error - try to delete and recreate
-        if error_code == "ResourceExistsException":
-            logger.warning(f"Secret {name} already exists, attempting to delete and recreate")
-            try:
-                # Try to delete the existing secret
-                client.delete_secret(
-                    SecretId=name,
-                    ForceDeleteWithoutRecovery=True,
-                )
-                logger.info(f"Deleted existing secret {name}, retrying create")
-                # Retry creating the secret
-                response = client.create_secret(Name=name, SecretString=private_key)
-            except ClientError as delete_exc:
-                delete_error_code = delete_exc.response.get("Error", {}).get("Code")
-                delete_error_msg = delete_exc.response.get("Error", {}).get("Message", str(delete_exc))
-                
-                # Handle case where secret is scheduled for deletion - restore it first
-                if "scheduled for deletion" in delete_error_msg.lower() or delete_error_code == "InvalidRequestException":
-                    logger.info(f"Secret {name} is scheduled for deletion, restoring it first")
-                    try:
-                        client.restore_secret(SecretId=name)
-                        logger.info(f"Restored secret {name}, now deleting")
-                        client.delete_secret(
-                            SecretId=name,
-                            ForceDeleteWithoutRecovery=True,
-                        )
-                        logger.info(f"Deleted restored secret {name}, retrying create")
-                        # Retry creating the secret
-                        response = client.create_secret(Name=name, SecretString=private_key)
-                    except ClientError as restore_exc:
-                        logger.error(f"Failed to restore/delete secret: {restore_exc}")
-                        raise SecretsManagerError(
-                            f"Secret is scheduled for deletion and could not be restored/deleted: {restore_exc.response.get('Error', {}).get('Message', str(restore_exc))}"
-                        )
-                else:
-                    logger.error(f"Failed to delete existing secret: {delete_exc}")
-                    raise SecretsManagerError(
-                        f"Secret already exists and could not be deleted: {delete_error_msg}"
-                    )
-        else:
-            logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
-            raise SecretsManagerError(error_message)
+        logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
+        raise SecretsManagerError(error_message)
     except BotoCoreError as exc:
         logger.error(f"AWS BotoCore error: {exc}")
         raise SecretsManagerError(str(exc))
