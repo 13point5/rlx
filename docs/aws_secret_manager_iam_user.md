@@ -18,7 +18,8 @@
         "secretsmanager:CreateSecret",
         "secretsmanager:DeleteSecret",
         "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:RestoreSecret"
       ],
       "Resource": "arn:aws:secretsmanager:*:*:secret:rlx/user-ssh-key/*"
     }
@@ -26,7 +27,9 @@
 }
 ```
 
-**Note:** The `DescribeSecret` permission is optional but recommended. If you don't include it, the system will still work but will handle orphaned secrets less efficiently (it will try to create and handle the "already exists" error instead of checking first).
+**Note:** 
+- The `DescribeSecret` permission is optional but recommended. If you don't include it, the system will still work but will handle orphaned secrets less efficiently (it will try to create and handle the "already exists" error instead of checking first).
+- The `RestoreSecret` permission is required to handle secrets that are scheduled for deletion. Without it, you may encounter errors when trying to recreate a secret that was previously deleted.
 
 6. Name the policy `RLXSecretsManagerPolicy` and create it
 7. Back in the user creation, refresh and attach `RLXSecretsManagerPolicy`

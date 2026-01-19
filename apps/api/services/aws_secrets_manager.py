@@ -59,10 +59,30 @@ def create_private_key_secret(
                 )
                 logger.info(f"Deleted orphaned secret {name}")
             except ClientError as exc:
-                logger.error(f"Failed to delete orphaned secret: {exc}")
-                raise SecretsManagerError(
-                    f"Secret already exists and could not be deleted: {exc.response.get('Error', {}).get('Message', str(exc))}"
-                )
+                error_code = exc.response.get("Error", {}).get("Code")
+                error_msg = exc.response.get("Error", {}).get("Message", str(exc))
+                
+                # Handle case where secret is scheduled for deletion - restore it first
+                if "scheduled for deletion" in error_msg.lower() or error_code == "InvalidRequestException":
+                    logger.info(f"Secret {name} is scheduled for deletion, restoring it first")
+                    try:
+                        client.restore_secret(SecretId=existing_arn)
+                        logger.info(f"Restored secret {name}, now deleting")
+                        client.delete_secret(
+                            SecretId=existing_arn,
+                            ForceDeleteWithoutRecovery=True,
+                        )
+                        logger.info(f"Deleted restored secret {name}")
+                    except ClientError as restore_exc:
+                        logger.error(f"Failed to restore/delete secret: {restore_exc}")
+                        raise SecretsManagerError(
+                            f"Secret is scheduled for deletion and could not be restored/deleted: {restore_exc.response.get('Error', {}).get('Message', str(restore_exc))}"
+                        )
+                else:
+                    logger.error(f"Failed to delete orphaned secret: {exc}")
+                    raise SecretsManagerError(
+                        f"Secret already exists and could not be deleted: {error_msg}"
+                    )
     except SecretsManagerError as exc:
         # If DescribeSecret permission is missing, log and continue - we'll handle "already exists" error during create
         if "is not authorized to perform: secretsmanager:DescribeSecret" in str(exc):
@@ -91,10 +111,32 @@ def create_private_key_secret(
                 # Retry creating the secret
                 response = client.create_secret(Name=name, SecretString=private_key)
             except ClientError as delete_exc:
-                logger.error(f"Failed to delete existing secret: {delete_exc}")
-                raise SecretsManagerError(
-                    f"Secret already exists and could not be deleted: {delete_exc.response.get('Error', {}).get('Message', str(delete_exc))}"
-                )
+                delete_error_code = delete_exc.response.get("Error", {}).get("Code")
+                delete_error_msg = delete_exc.response.get("Error", {}).get("Message", str(delete_exc))
+                
+                # Handle case where secret is scheduled for deletion - restore it first
+                if "scheduled for deletion" in delete_error_msg.lower() or delete_error_code == "InvalidRequestException":
+                    logger.info(f"Secret {name} is scheduled for deletion, restoring it first")
+                    try:
+                        client.restore_secret(SecretId=name)
+                        logger.info(f"Restored secret {name}, now deleting")
+                        client.delete_secret(
+                            SecretId=name,
+                            ForceDeleteWithoutRecovery=True,
+                        )
+                        logger.info(f"Deleted restored secret {name}, retrying create")
+                        # Retry creating the secret
+                        response = client.create_secret(Name=name, SecretString=private_key)
+                    except ClientError as restore_exc:
+                        logger.error(f"Failed to restore/delete secret: {restore_exc}")
+                        raise SecretsManagerError(
+                            f"Secret is scheduled for deletion and could not be restored/deleted: {restore_exc.response.get('Error', {}).get('Message', str(restore_exc))}"
+                        )
+                else:
+                    logger.error(f"Failed to delete existing secret: {delete_exc}")
+                    raise SecretsManagerError(
+                        f"Secret already exists and could not be deleted: {delete_error_msg}"
+                    )
         else:
             logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
             raise SecretsManagerError(error_message)
