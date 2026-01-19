@@ -1,11 +1,23 @@
 import os
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+
+class RunStatus(StrEnum):
+    """Status values for training runs."""
+
+    PROVISIONING = "PROVISIONING"
+    ACTIVE = "ACTIVE"
+    PENDING = "PENDING"
+    ERROR = "ERROR"
+    STOPPED = "STOPPED"
+    TERMINATED = "TERMINATED"
 
 load_dotenv()
 

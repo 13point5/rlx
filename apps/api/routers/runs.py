@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Project, Run
+from database import Project, Run, RunStatus
 from deps import CurrentUser, DbSession
 from services.prime_intellect import (
     DEFAULT_IMAGE,
@@ -148,7 +148,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
             detail="Prime Intellect did not return a pod id",
         )
 
-    status_value = pod_response.get("status") or "PROVISIONING"
+    status_value = pod_response.get("status") or RunStatus.PROVISIONING
 
     run = Run(
         project_id=project.id,
@@ -237,7 +237,7 @@ async def get_runs_status(
     response: dict[int, RunStatusItem] = {}
 
     for run in runs:
-        if run.status == "TERMINATED":
+        if run.status == RunStatus.TERMINATED:
             response[run.id] = RunStatusItem(
                 status=run.status, ssh_connection=None, ip=None
             )
@@ -297,7 +297,7 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     clerk_user_id = user.get("sub")
     run = await get_run_or_404(run_id, clerk_user_id, db)
 
-    if run.status == "TERMINATED":
+    if run.status == RunStatus.TERMINATED:
         return RunStatusResponse(status=run.status, ssh_connection=None, ip=None)
 
     def _raise_prime_error(message: str, status_code: int) -> None:
@@ -358,7 +358,7 @@ async def terminate_run(run_id: int, user: CurrentUser, db: DbSession):
     except PrimeIntellectAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
-    run.status = "TERMINATED"
+    run.status = RunStatus.TERMINATED
     run.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
