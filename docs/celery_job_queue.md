@@ -54,7 +54,7 @@ apps/api/
 │   │   └── ssh.py            # SSH executor using asyncssh
 │   └── tasks/
 │       ├── __init__.py
-│       ├── base.py           # DatabaseTask base class
+│       ├── base.py           # DatabaseTask base class, get_sync_session()
 │       ├── pod_tasks.py      # Pod lifecycle tasks
 │       └── repo_tasks.py     # Repository operations
 ├── routers/
@@ -206,6 +206,22 @@ job_config = {
 
 ### 4. Celery Tasks
 
+#### Helper Functions
+
+Two helper functions in `pod_tasks.py` handle job queueing:
+
+```python
+def queue_job(job, session):
+    """Queue a single job for execution based on job_type."""
+    # Dispatches to clone_repository, list_files, or run_custom_command
+    # Updates job status to QUEUED and stores celery_task_id
+
+def start_next_job_for_run(run_id: int):
+    """Start the next pending job for a run (by sequence order)."""
+    # Called after each job completes to continue the sequence
+    # Uses get_sync_session() since it's called outside task context
+```
+
 #### on_pod_ready
 
 Triggered when a run's status changes to `ACTIVE`. Starts the **first job** (sequence 0) for the run. Subsequent jobs are triggered when each job completes.
@@ -240,6 +256,8 @@ Jobs within a run are executed **sequentially** by their `sequence` field:
 
 This ensures that `LIST_FILES` waits for `CLONE_REPO` to complete.
 
+**Note**: The next job starts even if the current job fails. This prevents a single failed job from blocking the entire queue. Failed jobs can be retried individually via the API.
+
 #### clone_repository
 
 Clones a repository to the pod via SSH:
@@ -267,6 +285,18 @@ def list_files(self, job_id: int):
     # Execute ls -1Ap via SSH
     # Parse output into files and directories
     # Store result in job_config
+```
+
+#### run_custom_command
+
+Executes an arbitrary command on the pod:
+
+```python
+@celery_app.task(bind=True, base=DatabaseTask, max_retries=2)
+def run_custom_command(self, job_id: int):
+    # Get command from job_config
+    # Execute via SSHCommandExecutor with optional working_dir and env
+    # Store result (stdout, stderr, exit_code) in job_config
 ```
 
 ### 5. Async Execution Pattern
@@ -624,12 +654,14 @@ def install_dependencies(self, job_id: int):
     pass
 ```
 
-3. Register in `celery_app/tasks/pod_tasks.py`:
+3. Register in the `queue_job` function in `celery_app/tasks/pod_tasks.py`:
 
 ```python
-if job.job_type == "INSTALL_DEPS":
-    from celery_app.tasks.repo_tasks import install_dependencies
-    task = install_dependencies.delay(job.id)
+def queue_job(job, session):
+    # ... existing handlers ...
+    elif job.job_type == "INSTALL_DEPS":
+        from celery_app.tasks.repo_tasks import install_dependencies
+        task = install_dependencies.delay(job.id)
 ```
 
 4. Export in `celery_app/tasks/__init__.py`:
