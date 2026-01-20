@@ -323,8 +323,8 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                     </div>
                   )}
 
-                  {/* Stderr */}
-                  {cmd.stderr && (
+                  {/* Stderr - only show if command failed */}
+                  {cmd.stderr && cmd.exit_code !== 0 && (
                     <div className="space-y-1">
                       <p className="text-xs text-orange-500">
                         Stderr

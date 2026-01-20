@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Job, JobStatus, JobType, Project, Run, RunStatus
+from database import Job, JobStatus, JobType, Project, Run, RunStatus, UserSshKey
 from deps import CurrentUser, DbSession
 from services.prime_intellect import (
     DEFAULT_IMAGE,
@@ -106,6 +106,18 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
             detail="Project not found",
         )
 
+    # Get user's SSH key - required for pod access
+    ssh_key_result = await db.execute(
+        select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id)
+    )
+    ssh_key = ssh_key_result.scalar_one_or_none()
+
+    if not ssh_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No SSH key found. Please generate an SSH key in Settings before creating a run.",
+        )
+
     pod_payload: dict[str, Any] = {
         "name": body.name,
         "cloudId": body.instance.cloud_id,
@@ -116,6 +128,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
         "dataCenterId": body.instance.data_center,
         "country": body.instance.country,
         "security": body.instance.security,
+        "sshKeyId": ssh_key.prime_ssh_key_id,  # Explicitly set SSH key for pod access
     }
 
     if not body.instance.data_center:

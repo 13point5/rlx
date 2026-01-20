@@ -44,7 +44,7 @@ uv run alembic upgrade head
 
 ### 3. Start Celery Worker
 
-In a separate terminal:
+In a separate terminal. **Note:** `PYTHONPATH=.` is required so workers can import `database`, `services`, etc.:
 
 ```bash
 PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
