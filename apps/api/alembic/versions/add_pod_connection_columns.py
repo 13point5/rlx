@@ -4,6 +4,7 @@ Revision ID: b2c3d4e5f6g7
 Revises: a1b2c3d4e5f6
 Create Date: 2026-01-20 12:00:00.000000
 
+Note: These columns were later replaced by ssh_connection in migration 044af1a8eba9
 """
 
 from typing import Sequence, Union

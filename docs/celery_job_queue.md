@@ -72,11 +72,18 @@ The `CommandExecutor` provides a clean interface for executing commands with str
 ```python
 from celery_app.executors import SSHCommandExecutor, CommandResult
 
-# Create executor
+# Create executor from connection string (as returned by Prime Intellect)
+# Supports formats: "ssh ubuntu@host", "root@host -p 22", etc.
+executor = SSHCommandExecutor.from_connection_string(
+    connection_string="ubuntu@192.168.1.100",  # or "ssh ubuntu@host -p 2222"
+    private_key=private_key_string,
+)
+
+# Or create with individual parameters
 executor = SSHCommandExecutor(
     host="192.168.1.100",
     port=22,
-    username="root",
+    username="ubuntu",
     private_key=private_key_string,
 )
 
