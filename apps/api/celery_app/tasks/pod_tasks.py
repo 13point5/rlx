@@ -1,7 +1,14 @@
 """Pod-related Celery tasks."""
 
 import logging
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Ensure apps/api is in Python path for worker processes
+_API_DIR = Path(__file__).resolve().parent.parent.parent
+if str(_API_DIR) not in sys.path:
+    sys.path.insert(0, str(_API_DIR))
 
 from celery_app import celery_app
 from celery_app.tasks.base import DatabaseTask

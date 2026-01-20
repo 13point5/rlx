@@ -7,6 +7,8 @@ import type {
   GitHubRepo,
   GpuSummaryData,
   GpuAvailabilityResponse,
+  JobResponse,
+  JobDetailResponse,
   Project,
   RunInstanceSelection,
   RunRecord,
@@ -905,6 +907,67 @@ export async function getRunStatuses(runIds: number[]): Promise<{
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+// =============================================================================
+// Job Actions
+// =============================================================================
+
+export async function getRunJobs(runId: number): Promise<{
+  success: boolean;
+  jobs?: JobResponse[];
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(`${API_BASE_URL}/api/jobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { run_id: runId },
+    });
+    return response.data as JobResponse[];
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, jobs: result.data };
+}
+
+export async function getJobDetails(jobId: number): Promise<{
+  success: boolean;
+  job?: JobDetailResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(`${API_BASE_URL}/api/jobs/${jobId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as JobDetailResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, job: result.data };
+}
+
+export async function retryJob(jobId: number): Promise<{
+  success: boolean;
+  job?: JobResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.post(
+      `${API_BASE_URL}/api/jobs/${jobId}/retry`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data as JobResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, job: result.data };
 }
 
 // =============================================================================

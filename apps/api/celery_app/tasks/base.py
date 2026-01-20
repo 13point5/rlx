@@ -2,9 +2,16 @@
 
 import logging
 import os
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Generator
+
+# Ensure apps/api is in Python path for worker processes
+API_DIR = Path(__file__).resolve().parent.parent.parent
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
 
 from celery import Task
 from dotenv import load_dotenv

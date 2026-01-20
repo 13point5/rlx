@@ -18,6 +18,7 @@ from services.prime_intellect import (
     PrimeIntellectAPIError,
     upload_prime_ssh_key,
     delete_prime_ssh_key,
+    set_prime_ssh_key_primary,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,16 @@ async def upload_ssh_key_route(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Prime Intellect did not return SSH key id",
+            )
+
+        # Try to set the key as primary so it's used by default for new pods
+        # This is best-effort - don't fail if it doesn't work
+        try:
+            logger.info(f"Setting SSH key {prime_key_id} as primary in Prime Intellect")
+            await set_prime_ssh_key_primary(prime_key_id)
+        except PrimeIntellectAPIError as primary_exc:
+            logger.warning(
+                f"Failed to set SSH key as primary (non-fatal): {primary_exc.status_code} - {primary_exc.message}"
             )
 
     except PrimeIntellectAPIError as exc:

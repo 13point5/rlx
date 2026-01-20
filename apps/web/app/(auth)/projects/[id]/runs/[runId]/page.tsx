@@ -2,6 +2,7 @@ import { getRun } from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
 import { PageHeading } from "@/components/page-heading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { JobsPanel } from "./jobs-panel";
 import { RunStatusPanel } from "./run-status-panel";
 
 interface RunPageProps {
@@ -45,6 +46,7 @@ export default async function RunPage({ params }: RunPageProps) {
         </Card>
         <RunStatusPanel runId={runIdNumber} initialStatus={run.status} />
       </div>
+      <JobsPanel runId={runIdNumber} runStatus={run.status} />
     </div>
   );
 }

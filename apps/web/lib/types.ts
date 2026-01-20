@@ -176,3 +176,55 @@ export interface SSHKeyResponse {
   name: string | null;
   created_at: string;
 }
+
+// Job Types
+export type JobStatus =
+  | "PENDING"
+  | "QUEUED"
+  | "RUNNING"
+  | "SUCCESS"
+  | "FAILED"
+  | "TIMEOUT"
+  | "CANCELLED";
+
+export type JobType = "CLONE_REPO" | "LIST_FILES" | "CUSTOM_COMMAND";
+
+export interface JobCommand {
+  id: number;
+  command: string;
+  working_dir: string | null;
+  stdout: string | null;
+  stderr: string | null;
+  exit_code: number | null;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  sequence: number;
+}
+
+export interface JobResponse {
+  id: number;
+  run_id: number;
+  job_type: JobType;
+  status: JobStatus;
+  config: Record<string, unknown>;
+  celery_task_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  error_type: string | null;
+  sequence: number;
+}
+
+export interface JobDetailResponse extends JobResponse {
+  commands: JobCommand[];
+}
+
+export interface JobResultResponse {
+  job_id: number;
+  job_type: JobType;
+  status: JobStatus;
+  result: Record<string, unknown> | null;
+}
