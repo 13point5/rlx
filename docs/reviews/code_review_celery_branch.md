@@ -92,25 +92,17 @@ session.commit()
 
 ---
 
-### 4. Private Key Logged to Stdout
+### 4. ~~Private Key Logged to Stdout~~ (RESOLVED)
 
-**Severity**: High (Security)  
-**Location**: [apps/api/celery_app/executors/ssh.py:58](apps/api/celery_app/executors/ssh.py)
+**Status**: RESOLVED
 
-**Problem**: The first 50 characters of the private key are logged:
+**Original Issue**: First 50 characters of private key were logged.
 
-```python
-logger.info(f"Loading private key (length: {len(self.private_key)}, starts with: {self.private_key[:50]}...)")
-```
+**Changes Made**:
 
-**Impact**: Private key material exposed in logs, potentially compromising pod access.
-
-**Recommendation**: Remove or redact:
-
-```python
-logger.info(f"Loading private key (length: {len(self.private_key)} chars)")
-# Or just remove the log entirely
-```
+- Removed private key content from log message
+- Changed to `logger.debug` (internal detail, not needed in normal logs)
+- Only logs key length now (safe metadata)
 
 ---
 
@@ -347,7 +339,7 @@ cmd_id = self.record_command(job_id, clone_cmd, None, sequence=self.request.retr
 
 1. ~~**Add periodic task to check run statuses**~~ - RESOLVED
 2. ~~**Fix `run_custom_command` exception handler**~~ - RESOLVED (design clarified: stop on failure)
-3. **Remove private key logging** - Security issue
+3. ~~**Remove private key logging**~~ - RESOLVED
 
 ### Should Fix
 
