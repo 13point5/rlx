@@ -22,6 +22,47 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Module-level engine and session factory for use outside tasks
+_engine = None
+_SessionFactory = None
+
+
+def _get_engine():
+    """Get or create the module-level database engine."""
+    global _engine
+    if _engine is None:
+        sync_url = get_sync_database_url()
+        if not sync_url:
+            raise RuntimeError("DATABASE_URL not configured")
+        _engine = create_engine(
+            sync_url,
+            echo=False,
+            pool_pre_ping=True,
+            pool_recycle=300,
+        )
+    return _engine
+
+
+def _get_session_factory():
+    """Get or create the module-level session factory."""
+    global _SessionFactory
+    if _SessionFactory is None:
+        _SessionFactory = sessionmaker(bind=_get_engine())
+    return _SessionFactory
+
+
+@contextmanager
+def get_sync_session() -> Generator[Session, None, None]:
+    """
+    Context manager for getting a database session outside of a Task.
+    Useful for helper functions called from tasks.
+    """
+    session = _get_session_factory()()
+    try:
+        yield session
+    finally:
+        session.close()
+
 
 def get_sync_database_url() -> str | None:
     """Get synchronous database URL for Celery tasks."""

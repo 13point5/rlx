@@ -211,6 +211,12 @@ def clone_repository(self, job_id: int):
                 session.commit()
 
                 logger.info(f"Job {job_id} completed successfully")
+
+                # Start next job in sequence
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
+
                 return {
                     "job_id": job_id,
                     "status": "success",
@@ -226,6 +232,12 @@ def clone_repository(self, job_id: int):
                 session.commit()
 
                 logger.error(f"Job {job_id} failed: {result.error_message}")
+
+                # Start next job in sequence (even on failure, so other jobs can proceed)
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
+
                 return {
                     "job_id": job_id,
                     "status": "failed",
@@ -341,6 +353,12 @@ def list_files(self, job_id: int):
                 logger.info(
                     f"Job {job_id} completed: {len(files)} files, {len(directories)} directories"
                 )
+
+                # Start next job in sequence
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
+
                 return {
                     "job_id": job_id,
                     "status": "success",
@@ -353,6 +371,11 @@ def list_files(self, job_id: int):
                 job.error_type = result.error_type or "list_error"
                 job.completed_at = datetime.now(timezone.utc)
                 session.commit()
+
+                # Start next job in sequence
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
 
                 return {
                     "job_id": job_id,
@@ -459,6 +482,11 @@ def run_custom_command(self, job_id: int):
                 }
                 session.commit()
 
+                # Start next job in sequence
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
+
                 return {
                     "job_id": job_id,
                     "status": "success",
@@ -473,6 +501,11 @@ def run_custom_command(self, job_id: int):
                 job.error_type = result.error_type or "command_error"
                 job.completed_at = datetime.now(timezone.utc)
                 session.commit()
+
+                # Start next job in sequence
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
 
                 return {
                     "job_id": job_id,

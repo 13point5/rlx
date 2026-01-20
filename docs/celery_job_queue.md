@@ -99,17 +99,17 @@ else:
 
 #### CommandResult Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `stdout` | `str` | Standard output from command |
-| `stderr` | `str` | Standard error from command |
-| `exit_code` | `int \| None` | Process exit code |
-| `status` | `CommandStatus` | PENDING, RUNNING, SUCCESS, FAILED, TIMEOUT, CANCELLED |
-| `started_at` | `datetime` | When execution started |
-| `completed_at` | `datetime` | When execution completed |
-| `duration_ms` | `int` | Execution time in milliseconds |
-| `error_message` | `str \| None` | Human-readable error description |
-| `error_type` | `str \| None` | Error category (timeout, ssh_error, command_error) |
+| Field           | Type            | Description                                           |
+| --------------- | --------------- | ----------------------------------------------------- |
+| `stdout`        | `str`           | Standard output from command                          |
+| `stderr`        | `str`           | Standard error from command                           |
+| `exit_code`     | `int \| None`   | Process exit code                                     |
+| `status`        | `CommandStatus` | PENDING, RUNNING, SUCCESS, FAILED, TIMEOUT, CANCELLED |
+| `started_at`    | `datetime`      | When execution started                                |
+| `completed_at`  | `datetime`      | When execution completed                              |
+| `duration_ms`   | `int`           | Execution time in milliseconds                        |
+| `error_message` | `str \| None`   | Human-readable error description                      |
+| `error_type`    | `str \| None`   | Error category (timeout, ssh_error, command_error)    |
 
 ### 2. Database Models
 
@@ -120,7 +120,7 @@ Tracks the lifecycle of a job:
 ```python
 class Job(Base):
     __tablename__ = "jobs"
-    
+
     id: int                    # Primary key
     run_id: int                # Associated run
     clerk_user_id: str         # Owner
@@ -143,7 +143,7 @@ Records each command executed as part of a job:
 ```python
 class JobCommand(Base):
     __tablename__ = "job_commands"
-    
+
     id: int
     job_id: int                # Parent job
     command: str               # The command that was run
@@ -206,27 +206,39 @@ job_config = {
 
 ### 4. Celery Tasks
 
-#### check_pending_jobs (Periodic)
-
-Runs every 30 seconds via Celery Beat. Finds jobs with status `PENDING` where the associated run is `ACTIVE`, then queues them for execution.
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask)
-def check_pending_jobs(self):
-    # Find pending jobs with active runs
-    # Queue appropriate task for each job type
-    # Update job status to QUEUED
-```
-
 #### on_pod_ready
 
-Triggered when a run's status changes to `ACTIVE`. Initiates job processing for that run.
+Triggered when a run's status changes to `ACTIVE`. Starts the **first job** (sequence 0) for the run. Subsequent jobs are triggered when each job completes.
 
 ```python
 @celery_app.task(bind=True, base=DatabaseTask)
 def on_pod_ready(self, run_id: int):
-    # Trigger check_pending_jobs to process this run's jobs
+    # Get first pending job by sequence
+    # Queue it for execution
+    # Next job starts when this one completes
 ```
+
+#### check_pending_jobs (Periodic - Fallback)
+
+Runs every 30 seconds via Celery Beat as a fallback. Catches any stalled jobs that didn't get triggered by normal job completion.
+
+```python
+@celery_app.task(bind=True, base=DatabaseTask)
+def check_pending_jobs(self):
+    # Find runs with pending jobs but no active jobs
+    # Start the next pending job for each
+```
+
+#### Sequential Job Execution
+
+Jobs within a run are executed **sequentially** by their `sequence` field:
+
+1. When pod becomes ACTIVE, `on_pod_ready` starts job with sequence=0
+2. When job completes, it calls `start_next_job_for_run(run_id)`
+3. This finds and queues the next pending job (lowest sequence)
+4. Process repeats until no more pending jobs
+
+This ensures that `LIST_FILES` waits for `CLONE_REPO` to complete.
 
 #### clone_repository
 
@@ -352,23 +364,23 @@ Response includes command history:
 
 ```json
 {
-    "id": 456,
-    "run_id": 123,
-    "job_type": "CLONE_REPO",
-    "status": "SUCCESS",
-    "config": {
-        "repo_url": "https://github.com/owner/repo.git",
-        "branch": "main"
-    },
-    "commands": [
-        {
-            "id": 1,
-            "command": "git clone --depth 1 --branch main https://github.com/owner/repo.git /workspace/repo",
-            "exit_code": 0,
-            "status": "SUCCESS",
-            "duration_ms": 5432
-        }
-    ]
+  "id": 456,
+  "run_id": 123,
+  "job_type": "CLONE_REPO",
+  "status": "SUCCESS",
+  "config": {
+    "repo_url": "https://github.com/owner/repo.git",
+    "branch": "main"
+  },
+  "commands": [
+    {
+      "id": 1,
+      "command": "git clone --depth 1 --branch main https://github.com/owner/repo.git /workspace/repo",
+      "exit_code": 0,
+      "status": "SUCCESS",
+      "duration_ms": 5432
+    }
+  ]
 }
 ```
 
@@ -398,13 +410,13 @@ Returns the result stored in `job_config`:
 
 ```json
 {
-    "job_id": 456,
-    "job_type": "LIST_FILES",
-    "status": "SUCCESS",
-    "result": {
-        "files": ["README.md", "main.py"],
-        "directories": ["src", "tests"]
-    }
+  "job_id": 456,
+  "job_type": "LIST_FILES",
+  "status": "SUCCESS",
+  "result": {
+    "files": ["README.md", "main.py"],
+    "directories": ["src", "tests"]
+  }
 }
 ```
 
@@ -414,18 +426,18 @@ Returns the result stored in `job_config`:
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
 │ PENDING  │────▶│  QUEUED  │────▶│ RUNNING  │────▶│ SUCCESS  │
 └──────────┘     └──────────┘     └──────────┘     └──────────┘
-     │                │                │                 
+     │                │                │
      │                │                │           ┌──────────┐
      │                │                └──────────▶│  FAILED  │
      │                │                            └──────────┘
-     │                │                                  
+     │                │
      │                │                            ┌──────────┐
      │                └───────────────────────────▶│ CANCELLED│
      │                                             └──────────┘
-     │                                                   
-     │                ┌──────────┐                       
-     └───────────────▶│ CANCELLED│ (via API)             
-                      └──────────┘                       
+     │
+     │                ┌──────────┐
+     └───────────────▶│ CANCELLED│ (via API)
+                      └──────────┘
 ```
 
 1. **PENDING**: Job created, waiting for pod to be ready
@@ -513,15 +525,15 @@ PYTHONPATH=/app celery -A celery_app beat --loglevel=info
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
-| `CELERY_TASK_TIMEOUT` | Default task timeout (seconds) | `3600` |
-| `CELERY_CLONE_TIMEOUT` | Clone task timeout (seconds) | `600` |
-| `CELERY_COMMAND_TIMEOUT` | General command timeout (seconds) | `300` |
-| `CELERY_MAX_RETRIES` | Maximum retry attempts | `3` |
-| `CELERY_RETRY_DELAY` | Delay between retries (seconds) | `60` |
-| `CELERY_JOB_CHECK_INTERVAL` | Pending job check interval (seconds) | `30` |
+| Variable                    | Description                          | Default                    |
+| --------------------------- | ------------------------------------ | -------------------------- |
+| `REDIS_URL`                 | Redis connection URL                 | `redis://localhost:6379/0` |
+| `CELERY_TASK_TIMEOUT`       | Default task timeout (seconds)       | `3600`                     |
+| `CELERY_CLONE_TIMEOUT`      | Clone task timeout (seconds)         | `600`                      |
+| `CELERY_COMMAND_TIMEOUT`    | General command timeout (seconds)    | `300`                      |
+| `CELERY_MAX_RETRIES`        | Maximum retry attempts               | `3`                        |
+| `CELERY_RETRY_DELAY`        | Delay between retries (seconds)      | `60`                       |
+| `CELERY_JOB_CHECK_INTERVAL` | Pending job check interval (seconds) | `30`                       |
 
 ### Redis Cloud Connection
 
@@ -545,24 +557,24 @@ Tasks use exponential backoff with jitter:
 
 ### Error Types
 
-| Error Type | Description | Retryable |
-|------------|-------------|-----------|
-| `ssh_error` | SSH connection failed | Yes |
-| `timeout` | Command timed out | Yes |
-| `command_error` | Non-zero exit code | Depends |
-| `clone_error` | Git clone failed | Yes |
-| `list_error` | File listing failed | Yes |
-| `unknown` | Unexpected error | Yes |
+| Error Type      | Description           | Retryable |
+| --------------- | --------------------- | --------- |
+| `ssh_error`     | SSH connection failed | Yes       |
+| `timeout`       | Command timed out     | Yes       |
+| `command_error` | Non-zero exit code    | Depends   |
+| `clone_error`   | Git clone failed      | Yes       |
+| `list_error`    | File listing failed   | Yes       |
+| `unknown`       | Unexpected error      | Yes       |
 
 ### Common Errors and Solutions
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Permission denied for user root` | SSH key not provisioned to pod | Ensure user has SSH key configured; we now explicitly pass `sshKeyId` when creating pods |
-| `Event loop is closed` | Multiple `run_async()` calls with same executor | Wrap all async ops in single async function |
-| `No such file or directory: /workspace` | Directory doesn't exist on pod | Clone task now auto-creates parent directories |
-| `ModuleNotFoundError: No module named 'database'` | Missing PYTHONPATH | Run worker with `PYTHONPATH=.` prefix |
-| `No SSH key found` | User tried to create run without SSH key | Generate SSH key in Settings before creating runs |
+| Error                                             | Cause                                           | Solution                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `Permission denied for user root`                 | SSH key not provisioned to pod                  | Ensure user has SSH key configured; we now explicitly pass `sshKeyId` when creating pods |
+| `Event loop is closed`                            | Multiple `run_async()` calls with same executor | Wrap all async ops in single async function                                              |
+| `No such file or directory: /workspace`           | Directory doesn't exist on pod                  | Clone task now auto-creates parent directories                                           |
+| `ModuleNotFoundError: No module named 'database'` | Missing PYTHONPATH                              | Run worker with `PYTHONPATH=.` prefix                                                    |
+| `No SSH key found`                                | User tried to create run without SSH key        | Generate SSH key in Settings before creating runs                                        |
 
 ### Dead Letter Queue
 
@@ -585,6 +597,7 @@ uv run celery -A celery_app flower --port=5555
 ```
 
 Access at http://localhost:5555 for:
+
 - Active workers and their status
 - Task progress and history
 - Queue lengths
@@ -627,7 +640,7 @@ from celery_app.tasks.repo_tasks import install_dependencies
 
 ## Security Considerations
 
-1. **SSH Keys**: 
+1. **SSH Keys**:
    - Private keys are stored in AWS Secrets Manager and fetched on-demand
    - Public keys are uploaded to Prime Intellect and must be set as **primary** to be provisioned to new pods
    - Keys are generated client-side in OpenSSH Ed25519 format
