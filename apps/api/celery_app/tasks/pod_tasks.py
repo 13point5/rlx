@@ -199,3 +199,111 @@ def check_run_status(self, run_id: int) -> dict:
             return {"run_id": run_id, "status": "active", "jobs_triggered": True}
 
         return {"run_id": run_id, "status": run.status}
+
+
+@celery_app.task(
+    bind=True,
+    base=DatabaseTask,
+    name="celery_app.tasks.pod_tasks.check_pending_run_statuses",
+)
+def check_pending_run_statuses(self):
+    """
+    Periodic task that checks runs waiting for pod to become ready.
+    Fetches status from Prime Intellect API and triggers job processing
+    when pods become ACTIVE.
+
+    This removes the dependency on frontend polling for job execution.
+    """
+    import asyncio
+    from database import Run, RunStatus
+    from services.prime_intellect import fetch_pod_status, normalize_pod_response
+
+    # Statuses that indicate the run is waiting for the pod
+    pending_statuses = [RunStatus.PENDING, RunStatus.PROVISIONING]
+
+    with self.get_db_session() as session:
+        # Find runs that may need status updates
+        pending_runs = session.query(Run).filter(Run.status.in_(pending_statuses)).all()
+
+        if not pending_runs:
+            logger.debug("No pending runs to check")
+            return {"checked": 0, "activated": 0}
+
+        logger.info(f"Checking status for {len(pending_runs)} pending runs")
+
+        # Group runs by pod_id for batch API call
+        pod_ids = [run.pod_id for run in pending_runs]
+        run_by_pod_id = {run.pod_id: run for run in pending_runs}
+
+        # Fetch statuses from Prime Intellect
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                status_payload = loop.run_until_complete(fetch_pod_status(pod_ids))
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.exception(f"Failed to fetch pod statuses from Prime Intellect: {e}")
+            return {"checked": len(pending_runs), "activated": 0, "error": str(e)}
+
+        # Process status responses
+        activated_count = 0
+        status_data_list = []
+
+        # Handle various response formats
+        if isinstance(status_payload, dict):
+            data = status_payload.get("data", status_payload)
+            if isinstance(data, list):
+                status_data_list = data
+            elif isinstance(data, dict):
+                status_data_list = [data]
+        elif isinstance(status_payload, list):
+            status_data_list = status_payload
+
+        for status_data in status_data_list:
+            normalized = normalize_pod_response(status_data)
+            pod_id = normalized.get("pod_id")
+            new_status = normalized.get("status")
+
+            if not pod_id or pod_id not in run_by_pod_id:
+                continue
+
+            run = run_by_pod_id[pod_id]
+            previous_status = run.status
+
+            # Update run status if changed
+            if new_status and new_status != previous_status:
+                logger.info(f"Run {run.id} status changed: {previous_status} -> {new_status}")
+                run.status = new_status
+
+                # Store pod connection info when becoming ACTIVE
+                if new_status == RunStatus.ACTIVE:
+                    ip_address = normalized.get("ip")
+                    ssh_connection = normalized.get("ssh_connection")
+
+                    if ip_address:
+                        run.pod_ip = ip_address
+
+                    # Parse port from ssh_connection if available (format: "root@ip -p port")
+                    if ssh_connection and "-p" in ssh_connection:
+                        try:
+                            port = int(ssh_connection.split("-p")[1].strip().split()[0])
+                            run.pod_ssh_port = port
+                        except (ValueError, IndexError):
+                            pass
+
+                    logger.info(
+                        f"Run {run.id} pod connection: ip={run.pod_ip}, port={run.pod_ssh_port}"
+                    )
+
+                session.commit()
+
+                # Trigger job processing if newly ACTIVE
+                if previous_status != RunStatus.ACTIVE and new_status == RunStatus.ACTIVE:
+                    logger.info(f"Run {run.id} is now ACTIVE, triggering on_pod_ready")
+                    on_pod_ready.delay(run.id)
+                    activated_count += 1
+
+        logger.info(f"Checked {len(pending_runs)} runs, {activated_count} newly activated")
+        return {"checked": len(pending_runs), "activated": activated_count}
