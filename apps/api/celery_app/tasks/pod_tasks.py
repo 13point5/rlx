@@ -16,10 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 def queue_job(job, session):
-    """Queue a single job for execution."""
-    from database import JobStatus
+    """
+    Queue a single job for execution.
 
-    task = None
+    Uses atomic compare-and-swap to prevent race conditions:
+    only queues if job status is still PENDING.
+    """
+    from sqlalchemy import update
+    from database import Job, JobStatus
+
+    # Determine which task to run based on job type
     if job.job_type == "CLONE_REPO":
         from celery_app.tasks.repo_tasks import clone_repository
 
@@ -32,14 +38,26 @@ def queue_job(job, session):
         from celery_app.tasks.repo_tasks import run_custom_command
 
         task = run_custom_command.delay(job.id)
+    else:
+        logger.warning(f"Unknown job type: {job.job_type}")
+        return False
 
-    if task:
-        job.status = JobStatus.QUEUED
-        job.celery_task_id = task.id
-        session.commit()
-        logger.info(f"Queued job {job.id} (type: {job.job_type}, seq: {job.sequence})")
-        return True
-    return False
+    # Atomic update: only updates if status is still PENDING
+    # This prevents race conditions where two workers try to queue the same job
+    result = session.execute(
+        update(Job)
+        .where(Job.id == job.id, Job.status == JobStatus.PENDING)
+        .values(status=JobStatus.QUEUED, celery_task_id=task.id)
+    )
+    session.commit()
+
+    if result.rowcount == 0:
+        # Another worker already claimed this job
+        logger.info(f"Job {job.id} already claimed by another worker")
+        return False
+
+    logger.info(f"Queued job {job.id} (type: {job.job_type}, seq: {job.sequence})")
+    return True
 
 
 def start_next_job_for_run(run_id: int):
