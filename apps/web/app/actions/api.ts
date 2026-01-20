@@ -5,8 +5,8 @@ import axios, { AxiosError } from "axios";
 import type {
   GitHubOwner,
   GitHubRepo,
-  GpuSummaryData,
   GpuAvailabilityResponse,
+  GpuInstance,
   JobResponse,
   JobDetailResponse,
   Project,
@@ -406,20 +406,19 @@ export async function disconnectGitHub(): Promise<{
 }
 
 // =============================================================================
-// Project Actions
+// GPU Availability Actions
 // =============================================================================
 
-export async function getGpuAvailability(params?: {
-  page?: number;
-  page_size?: number;
-  regions?: string[];
-  gpu_type?: string;
-  gpu_count?: number;
-  socket?: string;
-  security?: string;
-}): Promise<{
+/**
+ * Fetch ALL GPU availability data by paginating through all pages.
+ * This matches what Prime Intellect does on their website.
+ * 
+ * Optimized: Fetches page 1 first to get total count, then fetches
+ * all remaining pages in parallel for faster loading.
+ */
+export async function getAllGpuAvailability(): Promise<{
   success: boolean;
-  data?: GpuAvailabilityResponse;
+  data?: GpuInstance[];
   error?: string;
 }> {
   const { getToken, userId } = await auth();
@@ -435,79 +434,45 @@ export async function getGpuAvailability(params?: {
       return { success: false, error: "Could not get session token" };
     }
 
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", params.page.toString());
-    if (params?.page_size)
-      searchParams.set("page_size", params.page_size.toString());
-    if (params?.gpu_type) searchParams.set("gpu_type", params.gpu_type);
-    if (params?.gpu_count)
-      searchParams.set("gpu_count", params.gpu_count.toString());
-    if (params?.socket) searchParams.set("socket", params.socket);
-    if (params?.security) searchParams.set("security", params.security);
-    params?.regions?.forEach((region) =>
-      searchParams.append("regions", region)
+    const pageSize = 100; // Max allowed by /gpus endpoint (legacy /availability allows 500)
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Fetch first page to get total count
+    const firstPageUrl = `${API_BASE_URL}/api/compute/availability/gpus?page=1&page_size=${pageSize}`;
+    const firstResponse = await axios.get(firstPageUrl, { headers });
+    const firstData = firstResponse.data as GpuAvailabilityResponse;
+
+    const totalCount = firstData.totalCount;
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // If only one page, return immediately
+    if (totalPages <= 1) {
+      return { success: true, data: firstData.items };
+    }
+
+    // Fetch remaining pages in parallel
+    const remainingPageNumbers = Array.from(
+      { length: totalPages - 1 },
+      (_, i) => i + 2
     );
 
-    const url = `${API_BASE_URL}/api/compute/availability/gpus${
-      searchParams.toString() ? `?${searchParams.toString()}` : ""
-    }`;
-
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    const remainingRequests = remainingPageNumbers.map((page) => {
+      const url = `${API_BASE_URL}/api/compute/availability/gpus?page=${page}&page_size=${pageSize}`;
+      return axios.get(url, { headers });
     });
 
-    return { success: true, data: response.data };
-  } catch (error) {
-    console.error("Error getting GPU availability:", error);
+    const remainingResponses = await Promise.all(remainingRequests);
 
-    if (error instanceof AxiosError) {
-      const detail = error.response?.data?.detail;
-      return {
-        success: false,
-        error:
-          detail || `API error: ${error.response?.status || error.message}`,
-      };
+    // Combine all items
+    const allItems: GpuInstance[] = [...firstData.items];
+    for (const response of remainingResponses) {
+      const data = response.data as GpuAvailabilityResponse;
+      allItems.push(...data.items);
     }
 
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
-}
-
-export async function getGpuSummary(): Promise<{
-  success: boolean;
-  data?: GpuSummaryData;
-  error?: string;
-}> {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      return { success: false, error: "Could not get session token" };
-    }
-
-    const response = await axios.get(
-      `${API_BASE_URL}/api/compute/availability/gpu-summary`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    return { success: true, data: response.data };
+    return { success: true, data: allItems };
   } catch (error) {
-    console.error("Error getting GPU summary:", error);
+    console.error("Error getting all GPU availability:", error);
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;

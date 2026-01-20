@@ -1,12 +1,11 @@
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query
 
 from deps import CurrentUser
 from services.prime_intellect import (
     PrimeIntellectAPIError,
     fetch_gpu_availability,
-    fetch_gpu_summary,
 )
 
 router = APIRouter(prefix="/api/compute", tags=["compute"])
@@ -43,15 +42,5 @@ async def get_gpu_availability(
 
     try:
         return await fetch_gpu_availability(params)
-    except PrimeIntellectAPIError as exc:  # pragma: no cover - simple pass-through
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
-
-
-@router.get("/availability/gpu-summary")
-async def get_gpu_summary(user: CurrentUser) -> Dict[str, Any]:  # noqa: ARG001 - auth enforced
-    """Proxy GPU summary to Prime Intellect API."""
-
-    try:
-        return await fetch_gpu_summary()
     except PrimeIntellectAPIError as exc:  # pragma: no cover - simple pass-through
         raise HTTPException(status_code=exc.status_code, detail=exc.message)

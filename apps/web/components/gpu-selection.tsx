@@ -10,18 +10,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { GpuSummaryData, GpuSummaryPrice } from "@/lib/types";
+import type {
+  ComputedGpuSummary,
+  ComputedGpuCountData,
+  ComputedGpuPrice,
+} from "@/lib/gpu-utils";
 import { ShieldCheckIcon, ZapIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-function isPriceRecord(
-  value: unknown
-): value is Record<string, GpuSummaryPrice> {
-  return typeof value === "object" && value !== null;
-}
-
 interface Props {
-  summary: GpuSummaryData;
+  summary: ComputedGpuSummary;
   selectedGpu?: string;
   selectedCount?: string;
   onSelectionChange?: (gpu: string, count: string) => void;
@@ -29,7 +27,7 @@ interface Props {
 
 type GpuSummaryCardProps = {
   gpuType: string;
-  counts: Record<string, unknown>;
+  counts: Record<string, ComputedGpuCountData>;
   selectedCount: string;
   onSelectCount: (val: string) => void;
   isSelected: boolean;
@@ -44,14 +42,12 @@ function GpuSummaryCard({
   isSelected,
   onClick,
 }: GpuSummaryCardProps) {
-  const countEntries = Object.entries(counts).filter(
-    ([, value]) => typeof value === "object"
-  );
+  const countEntries = Object.entries(counts);
 
-  const cheapest = (() => {
-    const value = counts[selectedCount];
-    if (!isPriceRecord(value)) return null;
-    return value["cheapest"] as GpuSummaryPrice | undefined;
+  const cheapest: ComputedGpuPrice | null = (() => {
+    const countData = counts[selectedCount];
+    if (!countData) return null;
+    return countData.cheapest;
   })();
 
   const displayName = gpuType.replace(/_/g, " ");
@@ -125,14 +121,13 @@ export function GpuSelection({
   const router = useRouter();
   const entries = useMemo(() => Object.entries(summary || {}), [summary]);
 
-  const getCountEntries = (countsRecord: Record<string, unknown>) =>
-    Object.entries(countsRecord).filter(
-      ([, value]) => typeof value === "object"
-    );
+  const getCountEntries = (
+    countsRecord: Record<string, ComputedGpuCountData>
+  ) => Object.entries(countsRecord);
 
   // Get first GPU and count as defaults
   const firstGpuType = entries[0]?.[0];
-  const firstGpuCounts = entries[0]?.[1] as Record<string, unknown>;
+  const firstGpuCounts = entries[0]?.[1];
   const firstCountKey = firstGpuCounts
     ? getCountEntries(firstGpuCounts)[0]?.[0]
     : undefined;
@@ -163,9 +158,7 @@ export function GpuSelection({
     : selectedGpuCount;
 
   const selectedEntry = entries.find(([gpuType]) => gpuType === optimisticGpu);
-  const selectedCountsRecord =
-    (selectedEntry?.[1] as Record<string, unknown> | undefined) ??
-    firstGpuCounts;
+  const selectedCountsRecord = selectedEntry?.[1] ?? firstGpuCounts;
   const selectedCountEntries = selectedCountsRecord
     ? getCountEntries(selectedCountsRecord)
     : [];
@@ -195,15 +188,15 @@ export function GpuSelection({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 lg:block">
+      <div className="flex flex-wrap items-center gap-3 md:block">
         <h2 className="text-lg md:text-xl font-semibold">Select GPU</h2>
-        <div className="lg:hidden">
+        <div className="md:hidden">
           <Select
             value={optimisticGpu}
             onValueChange={(gpuType) => {
               const countsRecord = entries.find(
                 ([type]) => type === gpuType
-              )?.[1] as Record<string, unknown> | undefined;
+              )?.[1];
               const countEntries = countsRecord
                 ? getCountEntries(countsRecord)
                 : [];
@@ -232,7 +225,7 @@ export function GpuSelection({
           </Select>
         </div>
       </div>
-      <div className="space-y-4 lg:hidden">
+      <div className="space-y-4 md:hidden">
         {selectedCountsRecord && (
           <GpuSummaryCard
             gpuType={optimisticGpu}
@@ -265,10 +258,9 @@ export function GpuSelection({
           />
         )}
       </div>
-      <div className="hidden lg:block max-h-[600px] lg:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
+      <div className="hidden md:block max-h-[600px] md:h-[calc(100vh-260px)] overflow-y-auto space-y-4 pr-1">
         {entries.map(([gpuType, counts]) => {
-          const countsRecord = counts as Record<string, unknown>;
-          const countEntries = getCountEntries(countsRecord);
+          const countEntries = getCountEntries(counts);
           const defaultCount = countEntries[0]?.[0] || "";
 
           // Use card-specific count if set, otherwise use URL count if this card is selected, otherwise use default
@@ -282,7 +274,7 @@ export function GpuSelection({
             <GpuSummaryCard
               key={gpuType}
               gpuType={gpuType}
-              counts={countsRecord}
+              counts={counts}
               selectedCount={effectiveCount}
               onSelectCount={(val) => {
                 setCardCounts((prev) => ({ ...prev, [gpuType]: val }));

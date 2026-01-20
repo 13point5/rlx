@@ -34,16 +34,6 @@ export type Project = {
   updated_at: string | null;
 };
 
-export type GpuSummaryPrice = {
-  onDemand: number | null;
-  communityPrice: number | null;
-  spotPrice: number | null;
-};
-
-export type GpuSummaryRegionPricing = Record<string, GpuSummaryPrice | string>;
-
-export type GpuSummaryData = Record<string, GpuSummaryRegionPricing>;
-
 export interface BreadcrumbItem {
   label: string;
   href?: string;

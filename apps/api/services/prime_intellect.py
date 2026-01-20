@@ -56,16 +56,6 @@ async def fetch_gpu_availability(params: Dict[str, Any]) -> Dict[str, Any]:
     return _handle_response(response)
 
 
-async def fetch_gpu_summary() -> Dict[str, Any]:
-    headers = await _get_headers()
-    url = f"{BASE_URL}/api/v1/availability/gpu-summary"
-
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        response = await client.get(url, headers=headers)
-
-    return _handle_response(response)
-
-
 async def create_pod(payload: Dict[str, Any]) -> Dict[str, Any]:
     headers = await _get_headers()
     url = f"{BASE_URL}/api/v1/pods/"
