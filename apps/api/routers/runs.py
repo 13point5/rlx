@@ -12,7 +12,6 @@ from services.prime_intellect import (
     PrimeIntellectAPIError,
     create_pod,
     delete_pod,
-    fetch_pod_status,
     normalize_pod_response,
 )
 
@@ -234,6 +233,12 @@ async def get_runs_status(
     db: DbSession,
     run_ids: list[int] | None = None,
 ):
+    """
+    Get the current status of multiple runs.
+
+    This endpoint reads from the database only. Status updates are handled
+    by the check_pending_run_statuses Celery Beat task.
+    """
     clerk_user_id = user.get("sub")
     if not run_ids:
         return {}
@@ -246,49 +251,13 @@ async def get_runs_status(
     if not runs:
         return {}
 
-    pod_ids = [run.pod_id for run in runs]
-
-    try:
-        status_payload = await fetch_pod_status(pod_ids)
-    except PrimeIntellectAPIError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
-
-    status_entries = _extract_status_entries(status_payload)
-    if not status_entries:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Prime Intellect did not return pod status",
-        )
-
-    # Normalize entries and create a map keyed by pod_id
-    normalized_entries = [normalize_pod_response(entry) for entry in status_entries]
-    status_map = {entry["pod_id"]: entry for entry in normalized_entries if entry["pod_id"]}
-
     response: dict[int, RunStatusItem] = {}
-
     for run in runs:
-        if run.status == RunStatus.TERMINATED:
-            response[run.id] = RunStatusItem(status=run.status, ssh_connection=None, ip=None)
-            continue
-
-        status_data = status_map.get(run.pod_id)
-        if not status_data:
-            response[run.id] = RunStatusItem(status=run.status, ssh_connection=None, ip=None)
-            continue
-        status_value = status_data.get("status") or run.status
-        ssh_connection = status_data.get("ssh_connection")
-        ip_address = status_data.get("ip")
-
-        run.status = status_value
-        run.updated_at = datetime.now(timezone.utc)
-
         response[run.id] = RunStatusItem(
-            status=status_value,
-            ssh_connection=ssh_connection,
-            ip=ip_address,
+            status=run.status,
+            ssh_connection=run.ssh_connection,
+            ip=run.pod_ip,
         )
-
-    await db.commit()
 
     return response
 
@@ -300,95 +269,21 @@ async def get_run(run_id: int, user: CurrentUser, db: DbSession):
     return run
 
 
-def _extract_status_entries(payload: Any) -> list[dict[str, Any]]:
-    """
-    Extract status entries from various Prime Intellect API response formats.
-
-    The API can return:
-    - A list of entries directly
-    - A dict with a "data" key containing a list
-    - A single dict entry
-    """
-    if payload is None:
-        return []
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, dict):
-        data = payload.get("data", payload)
-        return data if isinstance(data, list) else [data]
-    return []
-
-
-def _extract_single_status(payload: Any) -> dict[str, Any] | None:
-    """Extract a single status entry from the payload."""
-    entries = _extract_status_entries(payload)
-    return entries[0] if entries else None
-
-
 @router.get("/{run_id}/status", response_model=RunStatusResponse)
 async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
+    """
+    Get the current status of a run.
+
+    This endpoint reads from the database only. Status updates and job triggering
+    are handled by the check_pending_run_statuses Celery Beat task.
+    """
     clerk_user_id = user.get("sub")
     run = await get_run_or_404(run_id, clerk_user_id, db)
 
-    if run.status == RunStatus.TERMINATED:
-        return RunStatusResponse(status=run.status, ssh_connection=None, ip=None)
-
-    def _raise_prime_error(message: str, status_code: int) -> None:
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "message": message,
-                "last_known_status": run.status,
-                "last_updated_at": run.updated_at.isoformat() if run.updated_at else None,
-            },
-        )
-
-    try:
-        status_payload = await fetch_pod_status([run.pod_id])
-    except PrimeIntellectAPIError as exc:
-        _raise_prime_error(exc.message, exc.status_code)
-
-    raw_status_data = _extract_single_status(status_payload)
-
-    if not raw_status_data:
-        _raise_prime_error(
-            "Prime Intellect did not return pod status",
-            status.HTTP_502_BAD_GATEWAY,
-        )
-
-    status_data = normalize_pod_response(raw_status_data)
-    status_value = status_data.get("status")
-    if not status_value:
-        _raise_prime_error(
-            "Prime Intellect did not return status",
-            status.HTTP_502_BAD_GATEWAY,
-        )
-
-    ssh_connection = status_data.get("ssh_connection")
-    ip_address = status_data.get("ip")
-
-    # Check if status changed to ACTIVE
-    previous_status = run.status
-    run.status = status_value
-    run.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-
-    # Trigger job processing if pod just became active
-    if previous_status != RunStatus.ACTIVE and status_value == RunStatus.ACTIVE:
-        try:
-            from celery_app.tasks.pod_tasks import on_pod_ready
-
-            on_pod_ready.delay(run_id)
-        except Exception as e:
-            # Log but don't fail the status request
-            import logging
-
-            logging.warning(f"Failed to trigger job processing for run {run_id}: {e}")
-
     return RunStatusResponse(
-        status=status_value,
-        ssh_connection=ssh_connection,
-        ip=ip_address,
+        status=run.status,
+        ssh_connection=run.ssh_connection,
+        ip=run.pod_ip,
     )
 
 

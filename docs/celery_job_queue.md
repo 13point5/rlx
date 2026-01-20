@@ -234,6 +234,19 @@ def on_pod_ready(self, run_id: int):
     # Next job starts when this one completes
 ```
 
+#### check_pending_run_statuses (Periodic)
+
+Runs every 15 seconds via Celery Beat. Checks runs with PENDING/PROVISIONING status, fetches current status from Prime Intellect API, and triggers `on_pod_ready` when pods become ACTIVE. This removes the dependency on frontend polling for job execution.
+
+```python
+@celery_app.task(bind=True, base=DatabaseTask)
+def check_pending_run_statuses(self):
+    # Find runs waiting for pod (PENDING, PROVISIONING)
+    # Batch fetch statuses from Prime Intellect API
+    # Update run status in database
+    # Trigger on_pod_ready for newly ACTIVE runs
+```
+
 #### check_pending_jobs (Periodic - Fallback)
 
 Runs every 30 seconds via Celery Beat as a fallback. Catches any stalled jobs that didn't get triggered by normal job completion.
@@ -509,15 +522,17 @@ list_job = Job(
 )
 ```
 
-When the run status is polled and becomes `ACTIVE`, job processing is triggered:
+The `check_pending_run_statuses` Celery Beat task monitors runs and triggers job processing:
 
 ```python
-# In routers/runs.py - get_run_status endpoint
-
-if previous_status != RunStatus.ACTIVE and status_value == RunStatus.ACTIVE:
-    from celery_app.tasks.pod_tasks import on_pod_ready
-    on_pod_ready.delay(run_id)
+# Runs every 15 seconds via Celery Beat
+# 1. Finds runs with PENDING/PROVISIONING status
+# 2. Fetches current status from Prime Intellect API
+# 3. Updates run status and pod connection info in database
+# 4. Triggers on_pod_ready when status becomes ACTIVE
 ```
+
+The frontend status endpoints (`GET /api/runs/{id}/status`) simply read from the database - they do not call external APIs or trigger jobs.
 
 ## Running the Workers
 

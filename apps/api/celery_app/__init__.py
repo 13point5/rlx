@@ -69,6 +69,10 @@ def make_celery() -> Celery:
                 "task": "celery_app.tasks.pod_tasks.check_pending_jobs",
                 "schedule": settings.job_check_interval,
             },
+            "check-pending-run-statuses": {
+                "task": "celery_app.tasks.pod_tasks.check_pending_run_statuses",
+                "schedule": 15.0,  # Check every 15 seconds for pods becoming ready
+            },
         },
     )
 
