@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
     """
     Create an SSH executor for the given run.
-    Retrieves SSH connection details and private key.
+    Retrieves SSH connection string from DB and private key from AWS.
+
+    Note: ssh_connection must be populated by check_pending_run_statuses
+    before jobs can execute.
     """
     from database import Run, UserSshKey
     from services.aws_secrets_manager import get_private_key_secret
@@ -47,60 +50,16 @@ def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
         logger.exception(f"Failed to get private key from AWS: {e}")
         raise ValueError(f"Failed to retrieve SSH key: {e}")
 
-    # We need SSH connection info from Prime Intellect status
-    # For now, we'll need to get the IP from the run's last status check
-    # This should be stored in the database when status is checked
-    # For this implementation, we'll query Prime Intellect directly
-
-    from services.prime_intellect import fetch_pod_status, normalize_pod_response
-
-    try:
-        # Run this synchronously since we're in a Celery task
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            status_payload = loop.run_until_complete(fetch_pod_status([run.pod_id]))
-        finally:
-            loop.close()
-
-        # Extract status data
-        if isinstance(status_payload, dict):
-            data = status_payload.get("data", status_payload)
-            if isinstance(data, list) and len(data) > 0:
-                status_data = normalize_pod_response(data[0])
-            else:
-                status_data = normalize_pod_response(data)
-        elif isinstance(status_payload, list) and len(status_payload) > 0:
-            status_data = normalize_pod_response(status_payload[0])
-        else:
-            raise ValueError("Could not extract pod status")
-
-        ip_address = status_data.get("ip")
-        ssh_connection = status_data.get("ssh_connection")
-
-        if not ip_address:
-            raise ValueError("Pod IP address not available")
-
-        # Parse port from ssh_connection if available (format: "root@ip -p port")
-        port = 22
-        if ssh_connection and "-p" in ssh_connection:
-            try:
-                port = int(ssh_connection.split("-p")[1].strip().split()[0])
-            except (ValueError, IndexError):
-                pass
-
-        logger.info(f"Creating SSH executor for {ip_address}:{port}")
-
-        return SSHCommandExecutor(
-            host=ip_address,
-            port=port,
-            username="root",
-            private_key=private_key,
+    # Read SSH connection string from database (populated by check_pending_run_statuses)
+    if not run.ssh_connection:
+        raise ValueError(
+            f"SSH connection not available for run {run_id}. Run may not be active yet."
         )
 
-    except Exception as e:
-        logger.exception(f"Failed to get pod status for executor: {e}")
-        raise ValueError(f"Failed to get pod connection info: {e}")
+    return SSHCommandExecutor.from_connection_string(
+        connection_string=run.ssh_connection,
+        private_key=private_key,
+    )
 
 
 def run_async(coro):
@@ -172,7 +131,8 @@ def clone_repository(self, job_id: int):
 
             # Create target directory's parent if needed
             parent_dir = "/".join(target_dir.rstrip("/").split("/")[:-1]) or "/"
-            mkdir_cmd = f"mkdir -p {parent_dir}"
+            # Use sudo to create directory and chown to current user (handles both root and non-root)
+            mkdir_cmd = f"sudo mkdir -p {parent_dir} && sudo chown $(whoami):$(whoami) {parent_dir}"
 
             # Record command
             cmd_id = self.record_command(job_id, clone_cmd, None, sequence=0)
@@ -180,9 +140,11 @@ def clone_repository(self, job_id: int):
             # Run all async operations in a single event loop
             async def execute_clone():
                 try:
-                    # Ensure parent directory exists
+                    # Ensure parent directory exists with correct permissions
                     logger.info(f"Ensuring parent directory exists: {mkdir_cmd}")
-                    await executor.execute(mkdir_cmd, timeout_seconds=30)
+                    mkdir_result = await executor.execute(mkdir_cmd, timeout_seconds=30)
+                    if not mkdir_result.success:
+                        logger.warning(f"mkdir command failed: {mkdir_result.stderr}")
 
                     # Execute clone command
                     logger.info(f"Executing clone command: {clone_cmd}")

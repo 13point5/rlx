@@ -43,6 +43,55 @@ class SSHCommandExecutor(CommandExecutor):
         self.known_hosts = known_hosts
         self._connection: asyncssh.SSHClientConnection | None = None
 
+    @classmethod
+    def from_connection_string(
+        cls,
+        connection_string: str,
+        private_key: str,
+    ) -> "SSHCommandExecutor":
+        """
+        Create executor from SSH connection string.
+
+        Supports formats:
+            - "ssh user@host"
+            - "ssh user@host -p port"
+            - "user@host"
+            - "user@host -p port"
+
+        Args:
+            connection_string: SSH connection string from Prime Intellect
+            private_key: Private key contents as string
+        """
+        # Remove leading "ssh " if present
+        conn = connection_string.strip()
+        if conn.startswith("ssh "):
+            conn = conn[4:]
+
+        # Parse port if present (format: "user@host -p port")
+        port = 22
+        if " -p " in conn:
+            parts = conn.split(" -p ")
+            conn = parts[0]
+            try:
+                port = int(parts[1].strip().split()[0])
+            except (ValueError, IndexError):
+                logger.warning(f"Failed to parse port from: {connection_string}, using 22")
+
+        # Parse user@host
+        if "@" not in conn:
+            raise ValueError(f"Invalid connection string, missing @: {connection_string}")
+
+        username, host = conn.split("@", 1)
+
+        logger.info(f"Parsed connection string: {username}@{host}:{port}")
+
+        return cls(
+            host=host,
+            port=port,
+            username=username,
+            private_key=private_key,
+        )
+
     async def _get_connection(self) -> asyncssh.SSHClientConnection:
         """Get or create SSH connection."""
         if self._connection is None or self._connection.is_closed():

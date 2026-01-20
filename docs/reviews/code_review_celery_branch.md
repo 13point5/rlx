@@ -86,53 +86,32 @@ This branch implements a Celery-based job queue system for executing commands on
 
 ### 5. ~~Pod IP Fetched on Every Command Execution~~ (RESOLVED)
 
-**Status**: RESOLVED (as part of Issue #1)
+**Status**: RESOLVED (as part of Issue #1 and #6)
 
 **Original Issue**: `get_executor_for_run` called Prime Intellect API on every command execution.
 
 **Changes Made**:
 
-- Added `pod_ip` and `pod_ssh_port` columns to `runs` table
-- `check_pending_run_statuses` task stores these when run becomes ACTIVE
-- `get_executor_for_run` can now read from database instead of calling API
-
-**Note**: `get_executor_for_run` still calls the API as a fallback if `pod_ip` is not set. This could be updated to use the cached values exclusively.
+- Database stores raw `ssh_connection` string from Prime Intellect
+- `check_pending_run_statuses` task stores this when run becomes ACTIVE
+- `get_executor_for_run` reads from database only, no API calls
+- `SSHCommandExecutor.from_connection_string()` parses connection details internally
 
 ---
 
-### 6. Multiple Event Loops Created Wastefully
+### 6. ~~Multiple Event Loops Created Wastefully~~ (RESOLVED)
 
-**Severity**: Medium  
-**Location**: [apps/api/celery_app/tasks/repo_tasks.py:57-64, 106-113](apps/api/celery_app/tasks/repo_tasks.py)
+**Status**: RESOLVED
 
-**Problem**: Two separate event loops are created per task execution:
+**Original Issue**: Two separate event loops were created per task - one in `get_executor_for_run` to fetch pod status from API, another in `run_async()` for SSH commands.
 
-1. One in `get_executor_for_run` for fetching pod status:
+**Changes Made**:
 
-```python
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-try:
-    status_payload = loop.run_until_complete(fetch_pod_status([run.pod_id]))
-finally:
-    loop.close()
-```
-
-2. Another via `run_async()` for command execution:
-
-```python
-def run_async(coro):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-```
-
-**Impact**: Unnecessary overhead, potential for event loop issues.
-
-**Recommendation**: If caching pod IP (issue #5), this is mostly resolved. Otherwise, consolidate into a single `run_async` call that does both operations.
+- `SSHCommandExecutor` now has `from_connection_string()` class method that parses the connection string internally
+- Database stores raw `ssh_connection` string (single column instead of `pod_ip`, `pod_ssh_port`, `pod_ssh_user`)
+- `get_executor_for_run` reads connection string from DB, no async/API calls
+- Only `run_async()` creates an event loop now (for SSH command execution)
+- Parsing logic centralized in `SSHCommandExecutor.from_connection_string()`
 
 ---
 

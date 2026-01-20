@@ -155,22 +155,14 @@ class Run(Base):
     pod_id = Column(String, nullable=False)
     is_spot = Column(Boolean, nullable=False, default=False)
     # Pod connection info (populated when status becomes ACTIVE)
-    pod_ip = Column(String, nullable=True)
-    pod_ssh_port = Column(Integer, nullable=True)
+    # Raw SSH connection string from Prime Intellect (e.g., "ssh ubuntu@1.2.3.4 -p 22")
+    ssh_connection = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-    @property
-    def ssh_connection(self) -> str | None:
-        """Generate SSH connection string from stored pod info."""
-        if self.pod_ip:
-            port_part = f" -p {self.pod_ssh_port}" if self.pod_ssh_port and self.pod_ssh_port != 22 else ""
-            return f"root@{self.pod_ip}{port_part}"
-        return None
 
 
 class UserSshKey(Base):

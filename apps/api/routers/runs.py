@@ -64,7 +64,6 @@ class RunResponse(BaseModel):
 class RunStatusResponse(BaseModel):
     status: str
     ssh_connection: str | None = None
-    ip: str | None = None
 
 
 class RunTerminateResponse(BaseModel):
@@ -75,7 +74,6 @@ class RunTerminateResponse(BaseModel):
 class RunStatusItem(BaseModel):
     status: str
     ssh_connection: str | None = None
-    ip: str | None = None
 
 
 async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
@@ -256,7 +254,6 @@ async def get_runs_status(
         response[run.id] = RunStatusItem(
             status=run.status,
             ssh_connection=run.ssh_connection,
-            ip=run.pod_ip,
         )
 
     return response
@@ -283,7 +280,6 @@ async def get_run_status(run_id: int, user: CurrentUser, db: DbSession):
     return RunStatusResponse(
         status=run.status,
         ssh_connection=run.ssh_connection,
-        ip=run.pod_ip,
     )
 
 

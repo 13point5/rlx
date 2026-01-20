@@ -295,25 +295,14 @@ def check_pending_run_statuses(self):
                 logger.info(f"Run {run.id} status changed: {previous_status} -> {new_status}")
                 run.status = new_status
 
-                # Store pod connection info when becoming ACTIVE
+                # Store SSH connection string when becoming ACTIVE
                 if new_status == RunStatus.ACTIVE:
-                    ip_address = normalized.get("ip")
                     ssh_connection = normalized.get("ssh_connection")
-
-                    if ip_address:
-                        run.pod_ip = ip_address
-
-                    # Parse port from ssh_connection if available (format: "root@ip -p port")
-                    if ssh_connection and "-p" in ssh_connection:
-                        try:
-                            port = int(ssh_connection.split("-p")[1].strip().split()[0])
-                            run.pod_ssh_port = port
-                        except (ValueError, IndexError):
-                            pass
-
-                    logger.info(
-                        f"Run {run.id} pod connection: ip={run.pod_ip}, port={run.pod_ssh_port}"
-                    )
+                    if ssh_connection:
+                        run.ssh_connection = ssh_connection
+                        logger.info(f"Run {run.id} ssh_connection: {ssh_connection}")
+                    else:
+                        logger.warning(f"Run {run.id}: No ssh_connection in status response")
 
                 session.commit()
 
