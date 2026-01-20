@@ -573,3 +573,85 @@ async def fetch_repo_info(access_token: str, owner: str, repo: str) -> RepoDetai
         private=data["private"],
         description=data.get("description"),
     )
+
+
+@dataclass
+class BranchesResponse:
+    """Response for listing repository branches."""
+
+    branches: list[str]
+    page: int
+    per_page: int
+    has_more: bool
+
+
+async def fetch_repo_branches(
+    access_token: str,
+    owner: str,
+    repo: str,
+    page: int = 1,
+    per_page: int = 100,
+) -> BranchesResponse:
+    """
+    Fetch branches for a repository from GitHub API.
+
+    Args:
+        access_token: GitHub OAuth token
+        owner: Repository owner (user or org)
+        repo: Repository name
+        page: Page number (1-indexed)
+        per_page: Number of branches per page (max 100)
+
+    Returns:
+        BranchesResponse with branch names and pagination info.
+
+    Raises:
+        GitHubTokenInvalidError: If the token is invalid (401)
+        GitHubRepoNotFoundError: If the repo doesn't exist or user has no access (404)
+        GitHubNoAccessError: If the user doesn't have access (403)
+        GitHubRateLimitError: If rate limit is exceeded (429)
+        GitHubAPIError: For other API errors
+    """
+    # Clamp per_page to GitHub's max
+    per_page = min(per_page, 100)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/branches",
+            params={
+                "per_page": per_page,
+                "page": page,
+            },
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+
+        if response.status_code == 401:
+            raise GitHubTokenInvalidError("GitHub token is invalid or expired")
+
+        if response.status_code == 404:
+            raise GitHubRepoNotFoundError(f"Repository {owner}/{repo} not found or no access")
+
+        if response.status_code == 403:
+            if "rate limit" in response.text.lower():
+                raise GitHubRateLimitError("GitHub API rate limit exceeded")
+            raise GitHubNoAccessError(f"No access to repository {owner}/{repo}")
+
+        if response.status_code == 429:
+            raise GitHubRateLimitError("GitHub API rate limit exceeded")
+
+        if response.status_code != 200:
+            raise GitHubAPIError(f"GitHub API error: {response.status_code}")
+
+        data = response.json()
+
+    branch_names = [branch["name"] for branch in data]
+
+    return BranchesResponse(
+        branches=branch_names,
+        page=page,
+        per_page=per_page,
+        has_more=len(data) == per_page,
+    )

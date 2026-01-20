@@ -5,6 +5,7 @@ import axios, { AxiosError } from "axios";
 import type {
   GitHubOwner,
   GitHubRepo,
+  GitHubBranchesResponse,
   GpuAvailabilityResponse,
   GpuInstance,
   JobResponse,
@@ -388,6 +389,70 @@ export async function disconnectGitHub(): Promise<{
     return { success: true };
   } catch (error) {
     console.error("Error disconnecting GitHub:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getProjectBranches(options: {
+  projectId: number;
+  page?: number;
+  per_page?: number;
+}): Promise<{
+  success: boolean;
+  data?: GitHubBranchesResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const params = new URLSearchParams();
+    if (options.page) params.set("page", options.page.toString());
+    if (options.per_page) params.set("per_page", options.per_page.toString());
+
+    const url = `${API_BASE_URL}/api/github/projects/${options.projectId}/branches${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        branches: response.data.branches,
+        page: response.data.page,
+        per_page: response.data.per_page,
+        has_more: response.data.has_more,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching project branches:", error);
 
     if (error instanceof AxiosError) {
       const detail = error.response?.data?.detail;

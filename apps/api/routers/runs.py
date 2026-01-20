@@ -18,6 +18,18 @@ from services.prime_intellect import (
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
+def strip_origin_prefix(branch: str) -> str:
+    """
+    Strip 'origin/' prefix from a branch name for git clone.
+
+    The UI sends branches as 'origin/main' for display purposes,
+    but git clone --branch expects just 'main'.
+    """
+    if branch.startswith("origin/"):
+        return branch[7:]  # len("origin/") == 7
+    return branch
+
+
 class InstanceSelection(BaseModel):
     cloud_id: str
     gpu_type: str
@@ -180,13 +192,15 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     # Create initial jobs for the run
     # Job 1: Clone the repository
     repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}.git"
+    # Strip 'origin/' prefix for git clone (UI sends 'origin/main', git needs 'main')
+    clone_branch = strip_origin_prefix(body.branch)
     clone_job = Job(
         run_id=run.id,
         clerk_user_id=clerk_user_id,
         job_type=JobType.CLONE_REPO,
         job_config={
             "repo_url": repo_url,
-            "branch": body.branch,
+            "branch": clone_branch,
             "target_dir": "/workspace/repo",
             "depth": 1,  # Shallow clone for speed
         },

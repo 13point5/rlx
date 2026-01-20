@@ -1,4 +1,6 @@
+import { Loader2 } from "lucide-react";
 import { LabeledField } from "@/components/labeled-field";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -9,13 +11,23 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+interface BranchesState {
+  branches: string[];
+  isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
+}
+
 interface RunFieldsProps {
   runName: string;
   branch: string;
   config: string;
+  branchesState: BranchesState;
   onRunNameChange: (value: string) => void;
   onBranchChange: (value: string) => void;
   onConfigChange: (value: string) => void;
+  onLoadMoreBranches: () => void;
   className?: string;
 }
 
@@ -23,11 +35,15 @@ export function RunFields({
   runName,
   branch,
   config,
+  branchesState,
   onRunNameChange,
   onBranchChange,
   onConfigChange,
+  onLoadMoreBranches,
   className,
 }: RunFieldsProps) {
+  const { branches, isLoading, isLoadingMore, hasMore, error } = branchesState;
+
   return (
     <div
       className={cn(
@@ -45,13 +61,57 @@ export function RunFields({
         />
       </LabeledField>
       <LabeledField label="Repo branch" htmlFor="repo-branch" className="min-w-0">
-        <Select value={branch} onValueChange={onBranchChange}>
+        <Select value={branch} onValueChange={onBranchChange} disabled={isLoading}>
           <SelectTrigger id="repo-branch" className="w-full">
-            <SelectValue placeholder="Select branch" />
+            {isLoading ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Loading...
+              </span>
+            ) : (
+              <SelectValue placeholder="Select branch" />
+            )}
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="main">main</SelectItem>
-            <SelectItem value="feature/dpo">feature/dpo</SelectItem>
+            {error ? (
+              <div className="px-2 py-2 text-xs text-destructive">{error}</div>
+            ) : branches.length === 0 && !isLoading ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                No branches found
+              </div>
+            ) : (
+              <>
+                {branches.map((branchName) => (
+                  <SelectItem key={branchName} value={`origin/${branchName}`}>
+                    origin/{branchName}
+                  </SelectItem>
+                ))}
+                {hasMore && (
+                  <div className="border-t px-2 py-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onLoadMoreBranches();
+                      }}
+                      disabled={isLoadingMore}
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <Loader2 className="size-3 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Load more"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
           </SelectContent>
         </Select>
       </LabeledField>

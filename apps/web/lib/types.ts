@@ -21,6 +21,13 @@ export type GitHubRepo = {
   owner_avatar_url: string;
 };
 
+export interface GitHubBranchesResponse {
+  branches: string[];
+  page: number;
+  per_page: number;
+  has_more: boolean;
+}
+
 export type Project = {
   id: number;
   repo_id: number;

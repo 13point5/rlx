@@ -12,6 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import GitHubConnection, Project, get_db
 from deps import CurrentUser, DbSession, get_github_connection, get_valid_github_token
 from services import github as github_service
+from services.github import (
+    GitHubAPIError,
+    GitHubNoAccessError,
+    GitHubRateLimitError,
+    GitHubRepoNotFoundError,
+    GitHubTokenInvalidError,
+)
 
 load_dotenv()
 
@@ -256,6 +263,116 @@ async def repos(
             )
         print(f"Error fetching repos: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch repositories")
+
+
+@router.get("/projects/{project_id}/branches")
+async def get_project_branches(
+    project_id: int,
+    user: CurrentUser,
+    db: DbSession,
+    page: int = 1,
+    per_page: int = 100,
+):
+    """
+    Fetch branches for a project's GitHub repository.
+
+    Query params:
+    - page: Page number (default: 1)
+    - per_page: Items per page (default: 100, max: 100)
+
+    Returns:
+    - branches: List of branch names
+    - page: Current page number
+    - per_page: Items per page
+    - has_more: Whether there are more branches to fetch
+    """
+    clerk_user_id = user.get("sub")
+
+    # Validate pagination params
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 100
+    if per_page > 100:
+        per_page = 100
+
+    # Look up the project
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.clerk_user_id == clerk_user_id)
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get GitHub connection and valid token
+    connection = await get_github_connection(clerk_user_id, db)
+    access_token = await get_valid_github_token(connection, db)
+
+    try:
+        branches_response = await github_service.fetch_repo_branches(
+            access_token,
+            owner=project.repo_owner,
+            repo=project.repo_name,
+            page=page,
+            per_page=per_page,
+        )
+
+        return {
+            "branches": branches_response.branches,
+            "page": branches_response.page,
+            "per_page": branches_response.per_page,
+            "has_more": branches_response.has_more,
+        }
+
+    except GitHubTokenInvalidError:
+        # Token became invalid, try to refresh
+        new_token = await github_service.refresh_token(connection, db)
+        if not new_token:
+            await db.delete(connection)
+            await db.commit()
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub token expired. Please reconnect your GitHub account.",
+            )
+        # Retry with new token
+        try:
+            branches_response = await github_service.fetch_repo_branches(
+                new_token,
+                owner=project.repo_owner,
+                repo=project.repo_name,
+                page=page,
+                per_page=per_page,
+            )
+            return {
+                "branches": branches_response.branches,
+                "page": branches_response.page,
+                "per_page": branches_response.per_page,
+                "has_more": branches_response.has_more,
+            }
+        except GitHubAPIError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    except GitHubRepoNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Repository {project.repo_owner}/{project.repo_name} not found or you don't have access.",
+        )
+
+    except GitHubNoAccessError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+        )
+
+    except GitHubRateLimitError:
+        raise HTTPException(
+            status_code=429,
+            detail="GitHub API rate limit exceeded. Please try again later.",
+        )
+
+    except GitHubAPIError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/disconnect")

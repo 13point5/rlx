@@ -1,4 +1,4 @@
-import { getAllGpuAvailability } from "@/app/actions/api";
+import { getAllGpuAvailability, getProjectBranches } from "@/app/actions/api";
 import { computeGpuSummary, type ComputedGpuSummary } from "@/lib/gpu-utils";
 import type { GpuInstance } from "@/lib/types";
 
@@ -14,11 +14,21 @@ export interface GpuDataResult {
   error?: string | null;
 }
 
-export async function getNewRunData(searchParams: SearchParams) {
-  // Fetch all GPU availability and compute summary ourselves
-  // This matches what Prime Intellect does on their website
-  const availabilityResult = await getAllGpuAvailability();
+export interface BranchesDataResult {
+  success: boolean;
+  branches: string[];
+  hasMore: boolean;
+  error?: string | null;
+}
+
+export async function getNewRunData(searchParams: SearchParams, projectId: number) {
+  // Fetch GPU availability and branches in parallel
+  const [availabilityResult, branchesResult] = await Promise.all([
+    getAllGpuAvailability(),
+    getProjectBranches({ projectId, page: 1, per_page: 100 }),
+  ]);
   
+  // Process GPU data
   let gpuDataResult: GpuDataResult;
   
   if (availabilityResult.success && availabilityResult.data) {
@@ -32,6 +42,24 @@ export async function getNewRunData(searchParams: SearchParams) {
     gpuDataResult = { 
       success: false, 
       error: availabilityResult.error || "Failed to fetch GPU availability" 
+    };
+  }
+
+  // Process branches data
+  let branchesDataResult: BranchesDataResult;
+  
+  if (branchesResult.success && branchesResult.data) {
+    branchesDataResult = {
+      success: true,
+      branches: branchesResult.data.branches,
+      hasMore: branchesResult.data.has_more,
+    };
+  } else {
+    branchesDataResult = {
+      success: false,
+      branches: [],
+      hasMore: false,
+      error: branchesResult.error || "Failed to fetch branches",
     };
   }
 
@@ -57,6 +85,7 @@ export async function getNewRunData(searchParams: SearchParams) {
 
   return {
     gpuDataResult,
+    branchesDataResult,
     selectedGpu,
     selectedCount,
   };

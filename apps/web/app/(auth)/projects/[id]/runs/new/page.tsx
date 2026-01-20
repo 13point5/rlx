@@ -9,12 +9,14 @@ interface NewRunPageProps {
 export default async function NewRunPage({ params, searchParams }: NewRunPageProps) {
   const search = await searchParams;
   const { id } = await params;
-  const { gpuDataResult, selectedGpu, selectedCount } = await getNewRunData(search);
+  const projectId = Number(id);
+  const { gpuDataResult, branchesDataResult, selectedGpu, selectedCount } = await getNewRunData(search, projectId);
 
   return (
     <NewRunLayout
-      projectId={Number(id)}
+      projectId={projectId}
       gpuDataResult={gpuDataResult}
+      branchesDataResult={branchesDataResult}
       selectedGpu={selectedGpu}
       selectedCount={selectedCount}
     />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { RefreshCwIcon } from "lucide-react";
@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import type { GpuInstance } from "@/lib/types";
 import type { ComputedGpuSummary } from "@/lib/gpu-utils";
 import { computeGpuSummary } from "@/lib/gpu-utils";
-import { startRun, getAllGpuAvailability } from "@/app/actions/api";
+import { startRun, getAllGpuAvailability, getProjectBranches } from "@/app/actions/api";
 import { RunFields } from "./run-fields";
-import type { GpuDataResult } from "./new-run-data";
+import type { GpuDataResult, BranchesDataResult } from "./new-run-data";
 
 const GpuSelection = dynamic(
   () =>
@@ -33,6 +33,7 @@ const GpuAvailability = dynamic(
 interface NewRunLayoutProps {
   projectId: number;
   gpuDataResult: GpuDataResult;
+  branchesDataResult: BranchesDataResult;
   selectedGpu?: string;
   selectedCount?: string;
 }
@@ -45,6 +46,7 @@ type SelectedInstanceState = {
 export function NewRunLayout({
   projectId,
   gpuDataResult: initialGpuDataResult,
+  branchesDataResult: initialBranchesDataResult,
   selectedGpu: initialSelectedGpu,
   selectedCount: initialSelectedCount,
 }: NewRunLayoutProps) {
@@ -68,11 +70,74 @@ export function NewRunLayout({
   const [selectedCount, setSelectedCount] = useState(initialSelectedCount);
   const [selectionState, setSelectionState] = useState<SelectedInstanceState | null>(null);
   
+  // Compute initial default branch from server-fetched data
+  const initialDefaultBranch = (() => {
+    if (initialBranchesDataResult.success && initialBranchesDataResult.branches.length > 0) {
+      const defaultBranchName = initialBranchesDataResult.branches.includes("main")
+        ? "main"
+        : initialBranchesDataResult.branches[0];
+      return `origin/${defaultBranchName}`;
+    }
+    return "origin/main"; // Fallback
+  })();
+
   // Form state
   const [runName, setRunName] = useState("");
-  const [branch, setBranch] = useState("main");
+  const [branch, setBranch] = useState(initialDefaultBranch);
   const [config, setConfig] = useState("configs/ppo.yaml");
   const [error, setError] = useState<string | null>(null);
+
+  // Branches state - initialized from server-fetched data
+  const [branchesState, setBranchesState] = useState<{
+    branches: string[];
+    page: number;
+    hasMore: boolean;
+    isLoading: boolean;
+    isLoadingMore: boolean;
+    error: string | null;
+  }>({
+    branches: initialBranchesDataResult.branches,
+    page: 1,
+    hasMore: initialBranchesDataResult.hasMore,
+    isLoading: false,
+    isLoadingMore: false,
+    error: initialBranchesDataResult.success ? null : (initialBranchesDataResult.error ?? "Failed to load branches"),
+  });
+
+  // Fetch more branches (for pagination only, initial data comes from server)
+  const fetchMoreBranches = useCallback(
+    async (pageNum: number) => {
+      const result = await getProjectBranches({
+        projectId,
+        page: pageNum,
+        per_page: 100,
+      });
+
+      if (!result.success || !result.data) {
+        setBranchesState((prev) => ({
+          ...prev,
+          isLoadingMore: false,
+          error: result.error ?? "Failed to load more branches",
+        }));
+        return;
+      }
+
+      setBranchesState((prev) => ({
+        ...prev,
+        branches: [...prev.branches, ...result.data!.branches],
+        page: pageNum,
+        hasMore: result.data!.has_more,
+        isLoadingMore: false,
+        error: null,
+      }));
+    },
+    [projectId]
+  );
+
+  const handleLoadMoreBranches = useCallback(() => {
+    setBranchesState((prev) => ({ ...prev, isLoadingMore: true }));
+    fetchMoreBranches(branchesState.page + 1);
+  }, [fetchMoreBranches, branchesState.page]);
 
   // Filter instances client-side based on selection (instant, no refetch!)
   const filteredInstances = useMemo(() => {
@@ -156,9 +221,11 @@ export function NewRunLayout({
             runName={runName}
             branch={branch}
             config={config}
+            branchesState={branchesState}
             onRunNameChange={setRunName}
             onBranchChange={setBranch}
             onConfigChange={setConfig}
+            onLoadMoreBranches={handleLoadMoreBranches}
             className="lg:flex-1"
           />
           <div className="flex flex-col gap-2 lg:w-[140px]">
