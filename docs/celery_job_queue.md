@@ -269,7 +269,7 @@ Jobs within a run are executed **sequentially** by their `sequence` field:
 
 This ensures that `LIST_FILES` waits for `CLONE_REPO` to complete.
 
-**Note**: The next job starts even if the current job fails. This prevents a single failed job from blocking the entire queue. Failed jobs can be retried individually via the API.
+**Note**: If a job fails, subsequent jobs in the sequence will NOT start. This is intentional since jobs are often dependent (e.g., LIST_FILES requires CLONE_REPO to succeed). Failed jobs can be retried via the API, which will resume the sequence on success.
 
 #### clone_repository
 

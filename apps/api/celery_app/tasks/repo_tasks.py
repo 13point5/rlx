@@ -233,11 +233,7 @@ def clone_repository(self, job_id: int):
 
                 logger.error(f"Job {job_id} failed: {result.error_message}")
 
-                # Start next job in sequence (even on failure, so other jobs can proceed)
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
-
-                start_next_job_for_run(job.run_id)
-
+                # Don't start next job - sequential jobs should stop on failure
                 return {
                     "job_id": job_id,
                     "status": "failed",
@@ -372,11 +368,7 @@ def list_files(self, job_id: int):
                 job.completed_at = datetime.now(timezone.utc)
                 session.commit()
 
-                # Start next job in sequence
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
-
-                start_next_job_for_run(job.run_id)
-
+                # Don't start next job - sequential jobs should stop on failure
                 return {
                     "job_id": job_id,
                     "status": "failed",
@@ -502,11 +494,7 @@ def run_custom_command(self, job_id: int):
                 job.completed_at = datetime.now(timezone.utc)
                 session.commit()
 
-                # Start next job in sequence
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
-
-                start_next_job_for_run(job.run_id)
-
+                # Don't start next job - sequential jobs should stop on failure
                 return {
                     "job_id": job_id,
                     "status": "failed",
