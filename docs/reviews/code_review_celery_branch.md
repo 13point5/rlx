@@ -54,41 +54,17 @@ This branch implements a Celery-based job queue system for executing commands on
 
 ---
 
-### 3. Race Condition in `on_pod_ready`
+### 3. ~~Race Condition in `on_pod_ready`~~ (RESOLVED)
 
-**Severity**: High  
-**Location**: [apps/api/celery_app/tasks/pod_tasks.py:145-175](apps/api/celery_app/tasks/pod_tasks.py)
+**Status**: RESOLVED
 
-**Problem**: If `on_pod_ready` is called twice in quick succession (e.g., due to retry or duplicate trigger), both calls could queue the same job:
+**Original Issue**: If `on_pod_ready` was called twice concurrently, both could queue the same job.
 
-```python
-# Call 1: Finds job with PENDING status
-first_job = session.query(Job).filter(Job.status == JobStatus.PENDING)...
+**Changes Made**:
 
-# Call 2 (before Call 1 commits): Also finds same job with PENDING status
-first_job = session.query(Job).filter(Job.status == JobStatus.PENDING)...
-
-# Both calls queue the same job
-```
-
-**Impact**: Same job executed multiple times, wasting resources and potentially causing conflicts.
-
-**Recommendation**: Use `SELECT ... FOR UPDATE` to lock the row, or use an atomic compare-and-swap pattern:
-
-```python
-from sqlalchemy import update
-
-# Atomic update: only updates if status is still PENDING
-result = session.execute(
-    update(Job)
-    .where(Job.id == first_job.id, Job.status == JobStatus.PENDING)
-    .values(status=JobStatus.QUEUED, celery_task_id=task.id)
-)
-if result.rowcount == 0:
-    # Another worker already claimed this job
-    return {"run_id": run_id, "started_job_id": None, "reason": "already_claimed"}
-session.commit()
-```
+- Refactored `queue_job` to use atomic compare-and-swap pattern
+- Uses `UPDATE ... WHERE status = PENDING` to ensure only one worker can claim a job
+- Returns `False` if job was already claimed by another worker
 
 ---
 
@@ -343,7 +319,7 @@ cmd_id = self.record_command(job_id, clone_cmd, None, sequence=self.request.retr
 
 ### Should Fix
 
-4. **Add row locking in `on_pod_ready`** - Prevent race condition
+4. ~~**Add row locking in `on_pod_ready`**~~ - RESOLVED (atomic compare-and-swap)
 5. ~~**Cache pod IP in database**~~ - RESOLVED (part of issue #1)
 6. **Consolidate database session management** - Remove duplication
 
