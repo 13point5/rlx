@@ -136,46 +136,17 @@ def run_async(coro):
 
 ---
 
-### 7. Duplicate Database Engine/Session Factory
+### 7. ~~Duplicate Database Engine/Session Factory~~ (RESOLVED)
 
-**Severity**: Medium  
-**Location**: [apps/api/celery_app/tasks/base.py](apps/api/celery_app/tasks/base.py)
+**Status**: RESOLVED
 
-**Problem**: Two separate engine/session factory patterns exist in the same file:
+**Original Issue**: Two separate engine/session factory patterns existed in `base.py`.
 
-**Module-level** (lines 25-64):
+**Changes Made**:
 
-```python
-_engine = None
-_SessionFactory = None
-
-def get_sync_session():
-    session = _get_session_factory()()
-    ...
-```
-
-**Class-level** (lines 88-124):
-
-```python
-class DatabaseTask(Task):
-    _db_engine = None
-    _Session = None
-
-    def get_db_session(self):
-        session = self.Session()
-        ...
-```
-
-**Impact**:
-
-- Confusing which to use
-- Potentially two separate connection pools
-- Code duplication
-
-**Recommendation**: Consolidate to use only the `DatabaseTask` class methods. For `start_next_job_for_run`, either:
-
-1. Make it a Celery task method, or
-2. Have it accept a session parameter from the calling task
+- Removed duplicate `_db_engine` and `_Session` from `DatabaseTask` class
+- `DatabaseTask` now uses module-level `_get_engine()` and `_get_session_factory()`
+- Single shared connection pool for all database access
 
 ---
 
@@ -321,7 +292,7 @@ cmd_id = self.record_command(job_id, clone_cmd, None, sequence=self.request.retr
 
 4. ~~**Add row locking in `on_pod_ready`**~~ - RESOLVED (atomic compare-and-swap)
 5. ~~**Cache pod IP in database**~~ - RESOLVED (part of issue #1)
-6. **Consolidate database session management** - Remove duplication
+6. ~~**Consolidate database session management**~~ - RESOLVED
 
 ### Nice to Have
 
