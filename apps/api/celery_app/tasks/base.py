@@ -89,30 +89,19 @@ class DatabaseTask(Task):
     """
     Base task class that provides database session management.
     Uses sync SQLAlchemy since Celery tasks run in separate processes.
-    """
 
-    _db_engine = None
-    _Session = None
+    Shares the module-level engine and session factory with get_sync_session().
+    """
 
     @property
     def db_engine(self):
-        if DatabaseTask._db_engine is None:
-            sync_url = get_sync_database_url()
-            if not sync_url:
-                raise RuntimeError("DATABASE_URL not configured")
-            DatabaseTask._db_engine = create_engine(
-                sync_url,
-                echo=False,
-                pool_pre_ping=True,
-                pool_recycle=300,
-            )
-        return DatabaseTask._db_engine
+        """Get the shared database engine."""
+        return _get_engine()
 
     @property
     def Session(self) -> sessionmaker:
-        if DatabaseTask._Session is None:
-            DatabaseTask._Session = sessionmaker(bind=self.db_engine)
-        return DatabaseTask._Session
+        """Get the shared session factory."""
+        return _get_session_factory()
 
     @contextmanager
     def get_db_session(self) -> Generator[Session, None, None]:
