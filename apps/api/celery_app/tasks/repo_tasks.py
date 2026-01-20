@@ -33,7 +33,9 @@ def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
         return None
 
     # Get SSH key for user
-    ssh_key = session.query(UserSshKey).filter(UserSshKey.clerk_user_id == run.clerk_user_id).first()
+    ssh_key = (
+        session.query(UserSshKey).filter(UserSshKey.clerk_user_id == run.clerk_user_id).first()
+    )
     if not ssh_key:
         logger.error(f"No SSH key found for user {run.clerk_user_id}")
         raise ValueError(f"No SSH key found for user {run.clerk_user_id}")
@@ -130,7 +132,7 @@ def clone_repository(self, job_id: int):
         "depth": 1  # Optional: shallow clone
     }
     """
-    from database import CommandStatus, Job, JobStatus
+    from database import Job, JobStatus
 
     logger.info(f"Starting clone_repository task for job {job_id}")
 
@@ -168,18 +170,30 @@ def clone_repository(self, job_id: int):
             if not executor:
                 raise ValueError("Could not create SSH executor")
 
-            # Record command
-            cmd_id = self.record_command(job_id, clone_cmd, "/workspace", sequence=0)
+            # Create target directory's parent if needed
+            parent_dir = "/".join(target_dir.rstrip("/").split("/")[:-1]) or "/"
+            mkdir_cmd = f"mkdir -p {parent_dir}"
 
-            # Execute command
-            logger.info(f"Executing clone command: {clone_cmd}")
-            result = run_async(
-                executor.execute(
-                    clone_cmd,
-                    working_dir="/workspace",
-                    timeout_seconds=settings.clone_timeout,
-                )
-            )
+            # Record command
+            cmd_id = self.record_command(job_id, clone_cmd, None, sequence=0)
+
+            # Run all async operations in a single event loop
+            async def execute_clone():
+                try:
+                    # Ensure parent directory exists
+                    logger.info(f"Ensuring parent directory exists: {mkdir_cmd}")
+                    await executor.execute(mkdir_cmd, timeout_seconds=30)
+
+                    # Execute clone command
+                    logger.info(f"Executing clone command: {clone_cmd}")
+                    return await executor.execute(
+                        clone_cmd,
+                        timeout_seconds=settings.clone_timeout,
+                    )
+                finally:
+                    await executor.close()
+
+            result = run_async(execute_clone())
 
             # Update command result
             self.update_command_result(
@@ -190,9 +204,6 @@ def clone_repository(self, job_id: int):
                 exit_code=result.exit_code,
                 duration_ms=result.duration_ms,
             )
-
-            # Close executor
-            run_async(executor.close())
 
             if result.success:
                 job.status = JobStatus.SUCCESS
@@ -285,14 +296,18 @@ def list_files(self, job_id: int):
             # Record command
             cmd_id = self.record_command(job_id, list_cmd, target_dir, sequence=0)
 
-            # Execute command
-            logger.info(f"Executing list command: {list_cmd}")
-            result = run_async(
-                executor.execute(
-                    list_cmd,
-                    timeout_seconds=settings.command_timeout,
-                )
-            )
+            # Run all async operations in a single event loop
+            async def execute_list():
+                try:
+                    logger.info(f"Executing list command: {list_cmd}")
+                    return await executor.execute(
+                        list_cmd,
+                        timeout_seconds=settings.command_timeout,
+                    )
+                finally:
+                    await executor.close()
+
+            result = run_async(execute_list())
 
             # Update command result
             self.update_command_result(
@@ -303,9 +318,6 @@ def list_files(self, job_id: int):
                 exit_code=result.exit_code,
                 duration_ms=result.duration_ms,
             )
-
-            # Close executor
-            run_async(executor.close())
 
             if result.success:
                 # Parse output to separate files and directories
@@ -326,7 +338,9 @@ def list_files(self, job_id: int):
                 }
                 session.commit()
 
-                logger.info(f"Job {job_id} completed: {len(files)} files, {len(directories)} directories")
+                logger.info(
+                    f"Job {job_id} completed: {len(files)} files, {len(directories)} directories"
+                )
                 return {
                     "job_id": job_id,
                     "status": "success",
@@ -405,16 +419,20 @@ def run_custom_command(self, job_id: int):
             # Record command
             cmd_id = self.record_command(job_id, command, working_dir, sequence=0)
 
-            # Execute command
-            logger.info(f"Executing custom command: {command[:100]}...")
-            result = run_async(
-                executor.execute(
-                    command,
-                    working_dir=working_dir,
-                    timeout_seconds=timeout,
-                    env=env,
-                )
-            )
+            # Run all async operations in a single event loop
+            async def execute_custom():
+                try:
+                    logger.info(f"Executing custom command: {command[:100]}...")
+                    return await executor.execute(
+                        command,
+                        working_dir=working_dir,
+                        timeout_seconds=timeout,
+                        env=env,
+                    )
+                finally:
+                    await executor.close()
+
+            result = run_async(execute_custom())
 
             # Update command result
             self.update_command_result(
@@ -425,9 +443,6 @@ def run_custom_command(self, job_id: int):
                 exit_code=result.exit_code,
                 duration_ms=result.duration_ms,
             )
-
-            # Close executor
-            run_async(executor.close())
 
             if result.success:
                 job.status = JobStatus.SUCCESS
@@ -448,7 +463,9 @@ def run_custom_command(self, job_id: int):
                     "job_id": job_id,
                     "status": "success",
                     "exit_code": result.exit_code,
-                    "stdout": result.stdout[:1000] if result.stdout else None,  # Truncate for response
+                    "stdout": result.stdout[:1000]
+                    if result.stdout
+                    else None,  # Truncate for response
                 }
             else:
                 job.status = JobStatus.FAILED

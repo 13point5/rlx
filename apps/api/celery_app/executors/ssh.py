@@ -55,7 +55,14 @@ class SSHCommandExecutor(CommandExecutor):
 
             if self.private_key:
                 # Load key from string
-                connect_args["client_keys"] = [asyncssh.import_private_key(self.private_key)]
+                logger.info(f"Loading private key (length: {len(self.private_key)}, starts with: {self.private_key[:50]}...)")
+                try:
+                    imported_key = asyncssh.import_private_key(self.private_key)
+                    logger.info(f"Imported key type: {imported_key.get_algorithm()}, public key fingerprint: {imported_key.get_fingerprint()}")
+                    connect_args["client_keys"] = [imported_key]
+                except Exception as e:
+                    logger.error(f"Failed to import private key: {e}")
+                    raise
             elif self.private_key_path:
                 connect_args["client_keys"] = [self.private_key_path]
 

@@ -1002,10 +1002,37 @@ export async function generateSSHKeyPair(): Promise<{
     const keyObject = createPublicKey(publicKey);
     const sshPublicKey = keyObject.export({ type: "spki", format: "der" });
 
-    // Ed25519 public key in OpenSSH format
+    // Extract the raw 32-byte Ed25519 public key from SPKI DER format
+    // SPKI header for Ed25519 is 12 bytes
+    const rawPublicKey = sshPublicKey.subarray(12);
+
+    // Build proper OpenSSH wire format:
+    // 4 bytes: length of "ssh-ed25519" (11) as big-endian uint32
+    // 11 bytes: "ssh-ed25519"
+    // 4 bytes: length of key (32) as big-endian uint32
+    // 32 bytes: the public key
     const keyType = "ssh-ed25519";
-    const keyData = sshPublicKey.subarray(12); // Skip the SPKI header for Ed25519
-    const opensshPublicKey = `${keyType} ${keyData.toString("base64")} rlx-generated`;
+    const keyTypeBytes = Buffer.from(keyType, "utf8");
+    
+    const opensshBuffer = Buffer.alloc(4 + keyTypeBytes.length + 4 + rawPublicKey.length);
+    let offset = 0;
+    
+    // Write key type length (big-endian)
+    opensshBuffer.writeUInt32BE(keyTypeBytes.length, offset);
+    offset += 4;
+    
+    // Write key type
+    keyTypeBytes.copy(opensshBuffer, offset);
+    offset += keyTypeBytes.length;
+    
+    // Write public key length (big-endian)
+    opensshBuffer.writeUInt32BE(rawPublicKey.length, offset);
+    offset += 4;
+    
+    // Write public key
+    rawPublicKey.copy(opensshBuffer, offset);
+    
+    const opensshPublicKey = `${keyType} ${opensshBuffer.toString("base64")} rlx-generated`;
 
     return {
       success: true,

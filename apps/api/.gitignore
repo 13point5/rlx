@@ -117,8 +117,9 @@ ipython_config.py
 __pypackages__/
 
 # Celery stuff
-celerybeat-schedule
-celerybeat.pid
+celerybeat-schedule*
+celerybeat.pid*
+celerybeat*
 
 # SageMath parsed files
 *.sage.py

@@ -235,12 +235,15 @@ Clones a repository to the pod via SSH:
 ```python
 @celery_app.task(bind=True, base=DatabaseTask, max_retries=3)
 def clone_repository(self, job_id: int):
-    # Get SSH credentials
+    # Get SSH credentials from AWS Secrets Manager
     # Build git clone command
-    # Execute via SSHCommandExecutor
+    # Create parent directory (mkdir -p) before cloning
+    # Execute via SSHCommandExecutor (all async ops in single event loop)
     # Record results in JobCommand
     # Update Job status
 ```
+
+**Note**: The clone task automatically creates the parent directory (e.g., `/workspace`) before cloning, since pods may not have this directory by default.
 
 #### list_files
 
@@ -253,6 +256,67 @@ def list_files(self, job_id: int):
     # Parse output into files and directories
     # Store result in job_config
 ```
+
+### 5. Async Execution Pattern
+
+Since Celery tasks run in sync context but the SSH executor is async, we use a helper pattern that ensures all async operations run in a **single event loop**:
+
+```python
+def run_async(coro):
+    """Helper to run async code in Celery tasks."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+```
+
+**Important**: All async operations for a single executor must be wrapped in one async function and executed via a single `run_async()` call. This prevents "Event loop is closed" errors:
+
+```python
+# CORRECT: Single event loop for all operations
+async def execute_clone():
+    try:
+        await executor.execute(mkdir_cmd, timeout_seconds=30)
+        return await executor.execute(clone_cmd, timeout_seconds=600)
+    finally:
+        await executor.close()
+
+result = run_async(execute_clone())
+
+# WRONG: Multiple event loops (causes "Event loop is closed")
+run_async(executor.execute(mkdir_cmd))   # Loop 1 created and closed
+run_async(executor.execute(clone_cmd))   # Loop 2 - executor connection invalid!
+run_async(executor.close())              # Loop 3 - won't work
+```
+
+## Frontend Integration
+
+### Jobs Panel
+
+The run page displays a `JobsPanel` component that shows all jobs for a run with:
+
+- Job type with icon (Clone Repository, List Files, Run Command)
+- Status badge (Pending, Queued, Running, Success, Failed, etc.)
+- Expandable details showing:
+  - Command that was executed
+  - Exit code and duration
+  - Stdout output
+  - Stderr output (only shown for **failed** commands)
+  - Result data (e.g., file listings)
+- Retry button for failed/cancelled/timeout jobs
+
+### Output Display
+
+- **Stdout**: Always shown when available
+- **Stderr**: Only shown when command failed (exit code != 0)
+  - Many tools (like git) write progress to stderr even on success
+  - Hiding stderr for successful commands reduces noise
+
+### Polling
+
+The jobs panel polls for updates every 3 seconds while jobs are active (PENDING, QUEUED, or RUNNING). Polling stops when all jobs reach a terminal state or the run is terminated.
 
 ## API Endpoints
 
@@ -417,18 +481,20 @@ if previous_status != RunStatus.ACTIVE and status_value == RunStatus.ACTIVE:
 
 ### Development
 
+**Important**: The `PYTHONPATH=.` prefix is required so Celery workers can import modules like `database`, `services`, etc.
+
 ```bash
 # Terminal 1: FastAPI server
 cd apps/api
 uv run uvicorn main:app --reload --port 8000
 
-# Terminal 2: Celery worker
+# Terminal 2: Celery worker (PYTHONPATH=. is required!)
 cd apps/api
-uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
+PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
 
 # Terminal 3: Celery beat (scheduler)
 cd apps/api
-uv run celery -A celery_app beat --loglevel=info
+PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
 ```
 
 ### Production
@@ -436,11 +502,11 @@ uv run celery -A celery_app beat --loglevel=info
 Use separate containers/processes for each component:
 
 ```bash
-# Worker
-celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops --concurrency=4
+# Worker (set PYTHONPATH in container environment)
+PYTHONPATH=/app celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops --concurrency=4
 
 # Beat scheduler
-celery -A celery_app beat --loglevel=info
+PYTHONPATH=/app celery -A celery_app beat --loglevel=info
 ```
 
 ## Configuration
@@ -484,7 +550,19 @@ Tasks use exponential backoff with jitter:
 | `ssh_error` | SSH connection failed | Yes |
 | `timeout` | Command timed out | Yes |
 | `command_error` | Non-zero exit code | Depends |
+| `clone_error` | Git clone failed | Yes |
+| `list_error` | File listing failed | Yes |
 | `unknown` | Unexpected error | Yes |
+
+### Common Errors and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Permission denied for user root` | SSH key not provisioned to pod | Ensure user has SSH key configured; we now explicitly pass `sshKeyId` when creating pods |
+| `Event loop is closed` | Multiple `run_async()` calls with same executor | Wrap all async ops in single async function |
+| `No such file or directory: /workspace` | Directory doesn't exist on pod | Clone task now auto-creates parent directories |
+| `ModuleNotFoundError: No module named 'database'` | Missing PYTHONPATH | Run worker with `PYTHONPATH=.` prefix |
+| `No SSH key found` | User tried to create run without SSH key | Generate SSH key in Settings before creating runs |
 
 ### Dead Letter Queue
 
@@ -549,7 +627,42 @@ from celery_app.tasks.repo_tasks import install_dependencies
 
 ## Security Considerations
 
-1. **SSH Keys**: Private keys are stored in AWS Secrets Manager and fetched on-demand
+1. **SSH Keys**: 
+   - Private keys are stored in AWS Secrets Manager and fetched on-demand
+   - Public keys are uploaded to Prime Intellect and must be set as **primary** to be provisioned to new pods
+   - Keys are generated client-side in OpenSSH Ed25519 format
 2. **Redis TLS**: Use `rediss://` URLs for encrypted connections
 3. **Command Validation**: Validate job configs before execution
 4. **User Isolation**: Jobs are scoped to `clerk_user_id` and verified on all operations
+
+## SSH Key Flow
+
+For jobs to execute successfully, the following must be in place:
+
+1. **Key Generation**: User generates Ed25519 key pair in the frontend
+2. **Upload**: Public key uploaded to Prime Intellect, private key stored in AWS Secrets Manager
+3. **Pod Creation**: When creating a run, the `sshKeyId` is explicitly passed to Prime Intellect (see below)
+4. **Pod Provisioning**: The pod is created with the specified SSH key
+5. **Job Execution**: Celery worker retrieves private key from AWS and connects to pod
+
+### Explicit SSH Key Assignment
+
+When creating a pod, we explicitly pass the user's SSH key ID rather than relying on the "primary" key mechanism:
+
+```python
+# In routers/runs.py - create_run endpoint
+ssh_key = await db.execute(
+    select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id)
+)
+
+pod_payload = {
+    "name": body.name,
+    "cloudId": body.instance.cloud_id,
+    # ... other fields ...
+    "sshKeyId": ssh_key.prime_ssh_key_id,  # Explicitly set SSH key
+}
+```
+
+This ensures reliable SSH key provisioning. Users must have an SSH key configured before creating runs.
+
+**Note**: Existing pods will NOT be updated if you change SSH keys. You must terminate and create new runs to use a different key.
