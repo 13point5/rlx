@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Project, Run, RunStatus, UserSshKey
+from database import Job, Project, Run, RunStatus, UserSshKey
 from deps import CurrentUser, DbSession
 from job_templates import create_jobs_from_templates
 from services.prime_intellect import (
@@ -87,6 +87,11 @@ class RunTerminateResponse(BaseModel):
 class RunStatusItem(BaseModel):
     status: str
     ssh_connection: str | None = None
+
+
+class SyncJobsResponse(BaseModel):
+    added_count: int
+    message: str
 
 
 async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
@@ -289,3 +294,56 @@ async def terminate_run(run_id: int, user: CurrentUser, db: DbSession):
     await db.commit()
 
     return RunTerminateResponse(status=run.status, pod_id=run.pod_id)
+
+
+@router.post("/{run_id}/sync-jobs", response_model=SyncJobsResponse)
+async def sync_jobs(run_id: int, user: CurrentUser, db: DbSession):
+    """
+    Add missing jobs from the current template to an existing run.
+
+    Compares existing job sequences with the template and adds any
+    jobs that don't exist yet. Useful when new jobs are added to the
+    template after a run was created.
+    """
+    clerk_user_id = user.get("sub")
+
+    # Get run and verify ownership
+    run = await get_run_or_404(run_id, clerk_user_id, db)
+
+    # Get project for repo info
+    project_result = await db.execute(select(Project).where(Project.id == run.project_id))
+    project = project_result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    # Get existing job sequences for this run
+    existing_result = await db.execute(select(Job.sequence).where(Job.run_id == run_id))
+    existing_sequences = set(row[0] for row in existing_result.fetchall())
+
+    # Create missing jobs using shared helper
+    ctx = {
+        "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
+        "branch": strip_origin_prefix(run.branch),
+    }
+    new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)
+
+    # Add new jobs to database
+    for job in new_jobs:
+        db.add(job)
+
+    await db.commit()
+
+    if new_jobs:
+        return SyncJobsResponse(
+            added_count=len(new_jobs),
+            message=f"Added {len(new_jobs)} new job(s)",
+        )
+    else:
+        return SyncJobsResponse(
+            added_count=0,
+            message="All jobs are already present",
+        )

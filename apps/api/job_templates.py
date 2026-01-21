@@ -58,6 +58,15 @@ JOB_TEMPLATES = [
             "timeout_seconds": None,
         },
     },
+    {
+        "sequence": 6,
+        "job_type": JobType.CUSTOM_COMMAND,
+        "get_config": lambda ctx: {
+            "command": "source $HOME/.local/bin/env && uv pip list",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": 60,
+        },
+    },
 ]
 
 

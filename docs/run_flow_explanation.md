@@ -42,6 +42,7 @@ class Run(Base):
 ```
 
 **Key Fields:**
+
 - `status`: Current run status (PROVISIONING, ACTIVE, TERMINATED, ERROR, etc.)
 - `pod_id`: Prime Intellect pod identifier (used to query status)
 - `updated_at`: Timestamp of last status update
@@ -139,13 +140,13 @@ sequenceDiagram
     Backend-->>ServerAction: RunResponse
     ServerAction-->>Page: Run data
     Page->>Panel: Render with initialStatus
-    
+
     loop Every 5 seconds (until TERMINATED)
         Panel->>ServerAction: getRunStatus(runId)
         ServerAction->>Backend: GET /api/runs/{runId}/status
         Backend->>DB: SELECT Run WHERE id = runId
         DB-->>Backend: Run (with pod_id)
-        
+
         alt Status is TERMINATED
             Backend-->>ServerAction: {status: "TERMINATED"}
         else Status is active
@@ -155,7 +156,7 @@ sequenceDiagram
             DB-->>Backend: Updated
             Backend-->>ServerAction: {status, ssh_connection, ip}
         end
-        
+
         ServerAction-->>Panel: StatusResponse
         Panel->>Panel: Update UI (badge, SSH connection)
     end
@@ -246,20 +247,20 @@ sequenceDiagram
     DB-->>Backend: List of Runs
     Backend-->>ServerAction: [Run, Run, ...]
     ServerAction-->>Page: Runs array
-    
+
     Page->>Page: Extract run IDs [1, 2, 3, ...]
     Page->>ServerAction: getRunStatuses([1, 2, 3, ...])
     ServerAction->>Backend: GET /api/runs/status?run_ids=1,2,3...
     Backend->>DB: SELECT Run WHERE id IN (1,2,3...)
     DB-->>Backend: Runs with pod_ids
-    
+
     Backend->>Backend: Filter terminated runs
     Backend->>PI: fetch_pod_status([pod_id1, pod_id2, ...])
     PI-->>Backend: [{pod_id: status, sshConnection, ip}, ...]
-    
+
     Backend->>DB: UPDATE Run SET status=?, updated_at=? (for each run)
     DB-->>Backend: Updated
-    
+
     Backend-->>ServerAction: {runId1: {status, ssh_connection, ip}, ...}
     ServerAction-->>Page: Status map {runId: status}
     Page->>Page: Display runs table with live statuses
@@ -356,16 +357,26 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 **Backend (`apps/api/routers/runs.py` - `create_run`):**
 
 1. Validates project exists and belongs to user
-2. Builds pod payload with GPU specs
-3. Calls Prime Intellect API `create_pod()` (`apps/api/services/prime_intellect.py`)
-4. Receives `pod_id` and initial `status` from Prime Intellect
-5. Creates `Run` record in database with:
+2. Validates user has an SSH key configured
+3. Builds pod payload with GPU specs and SSH key ID
+4. Calls Prime Intellect API `create_pod()` (`apps/api/services/prime_intellect.py`)
+5. Receives `pod_id` and initial `status` from Prime Intellect
+6. Creates `Run` record in database with:
    - Status from Prime Intellect response (or "PROVISIONING" default)
    - All run metadata (name, branch, config, GPU specs, etc.)
    - `pod_id` for future status queries
-6. Returns `RunResponse` to frontend
+7. Creates initial jobs from templates (`apps/api/job_templates.py`):
+   - Clone user's project repo
+   - List files in repo
+   - Clone prime-rl framework
+   - Install uv package manager
+   - Install prime-rl dependencies
+   - Install user's verifiers environment
+   - Verify installation
+8. Returns `RunResponse` to frontend
 
 **Frontend:**
+
 - Receives run ID
 - Redirects to `/projects/{projectId}/runs/{runId}`
 
@@ -395,6 +406,7 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 6. Returns `RunStatusResponse` with status, SSH connection, and IP
 
 **Frontend:**
+
 - Updates UI with new status badge
 - Displays SSH connection string when available
 - Shows error message if API call fails (with last known status)
@@ -419,6 +431,7 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 8. Returns `dict[int, RunStatusItem]` mapping run ID to status
 
 **Frontend:**
+
 - Displays runs table
 - Shows live status from status map (falls back to DB status)
 - Status badges update based on current status
@@ -430,6 +443,7 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 Status is updated in the database in two places:
 
 1. **Individual status endpoint** (`get_run_status`):
+
    ```python
    run.status = status_value
    run.updated_at = datetime.now(timezone.utc)
@@ -447,6 +461,7 @@ Status is updated in the database in two places:
 ### Status Values
 
 Status values come from Prime Intellect API:
+
 - `PROVISIONING`: Pod is being created
 - `PENDING`: Pod is queued
 - `ACTIVE`: Pod is running (SSH connection available)
@@ -457,12 +472,14 @@ Status values come from Prime Intellect API:
 ### Polling Behavior
 
 **Run Page (`RunStatusPanel`):**
+
 - Polls every 5 seconds
 - Stops when status is "TERMINATED"
 - Handles errors gracefully (shows last known status)
 - Uses React Query for automatic retries and caching
 
 **Project Page:**
+
 - Fetches status once on initial load (server-side)
 - No client-side polling (static page)
 - Status may be stale until page refresh
@@ -486,16 +503,18 @@ Status values come from Prime Intellect API:
 
 - `POST /api/runs`: Create new run
 - `GET /api/runs/{run_id}`: Get run details
-- `GET /api/runs/{run_id}/status`: Get live status (updates DB)
-- `GET /api/runs/status?run_ids=...`: Batch get statuses (updates DB)
+- `GET /api/runs/{run_id}/status`: Get live status (reads from DB)
+- `GET /api/runs/status?run_ids=...`: Batch get statuses (reads from DB)
 - `GET /api/runs?project_id=X`: List runs for project
 - `POST /api/runs/{run_id}/terminate`: Terminate run
+- `POST /api/runs/{run_id}/sync-jobs`: Add missing jobs from current template to existing run
 
 ## Error Handling
 
 ### Prime Intellect API Errors
 
 When Prime Intellect API fails:
+
 - Backend catches `PrimeIntellectAPIError`
 - Returns HTTP error with details
 - Frontend shows error message

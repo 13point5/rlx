@@ -14,8 +14,9 @@ import {
   FolderOpen,
   Terminal,
   RotateCcw,
+  RefreshCw,
 } from "lucide-react";
-import { getRunJobs, getJobDetails, retryJob } from "@/app/actions/api";
+import { getRunJobs, getJobDetails, retryJob, syncRunJobs } from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -292,6 +293,8 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
 }
 
 export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
+  const queryClient = useQueryClient();
+
   const { data: jobs, isLoading, error } = useQuery({
     queryKey: ["run-jobs", runId],
     queryFn: async () => {
@@ -321,15 +324,46 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
     },
   });
 
+  // Sync jobs mutation
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await syncRunJobs(runId);
+      if (!response.success) {
+        throw new Error(response.error || "Failed to sync jobs");
+      }
+      return response;
+    },
+    onSuccess: () => {
+      // Refresh jobs list
+      queryClient.invalidateQueries({ queryKey: ["run-jobs", runId] });
+    },
+  });
+
   const sortedJobs = jobs?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Jobs
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            Jobs
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            {syncMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            <span className="ml-1">Sync Jobs</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         {error && (

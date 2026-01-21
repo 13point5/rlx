@@ -1000,6 +1000,31 @@ export async function retryJob(jobId: number): Promise<{
   return { success: true, job: result.data };
 }
 
+export async function syncRunJobs(runId: number): Promise<{
+  success: boolean;
+  added_count?: number;
+  message?: string;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.post(
+      `${API_BASE_URL}/api/runs/${runId}/sync-jobs`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data as { added_count: number; message: string };
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return {
+    success: true,
+    added_count: result.data?.added_count,
+    message: result.data?.message,
+  };
+}
+
 // =============================================================================
 // SSH Key Actions
 // =============================================================================

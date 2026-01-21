@@ -57,8 +57,10 @@ apps/api/
 │       ├── base.py           # DatabaseTask base class, get_sync_session()
 │       ├── pod_tasks.py      # Pod lifecycle tasks
 │       └── repo_tasks.py     # Repository operations
+├── job_templates.py          # Job template definitions (reusable)
 ├── routers/
-│   └── jobs.py               # Jobs API endpoints
+│   ├── jobs.py               # Jobs API endpoints
+│   └── runs.py               # Runs API (includes sync-jobs endpoint)
 └── alembic/versions/
     └── add_jobs_tables.py    # Database migration
 ```
@@ -91,7 +93,7 @@ executor = SSHCommandExecutor(
 result: CommandResult = await executor.execute(
     "git clone https://github.com/owner/repo.git /workspace/repo",
     working_dir="/workspace",
-    timeout_seconds=600,
+    timeout_seconds=600,  # Use None for no timeout
     env={"GIT_SSH_COMMAND": "ssh -o StrictHostKeyChecking=no"},
 )
 
@@ -262,8 +264,11 @@ Runs every 30 seconds via Celery Beat as a fallback. Catches any stalled jobs th
 @celery_app.task(bind=True, base=DatabaseTask)
 def check_pending_jobs(self):
     # Find runs with pending jobs but no active jobs
-    # Start the next pending job for each
+    # Check if a failed job is blocking the sequence
+    # Only start next job if no failed job with lower sequence exists
 ```
+
+**Note**: If a job fails, this task will NOT start subsequent jobs. It checks for failed jobs with a lower sequence number and skips the run if one exists. This prevents the fallback task from bypassing the sequential failure behavior.
 
 #### Sequential Job Execution
 
@@ -470,6 +475,23 @@ Returns the result stored in `job_config`:
 }
 ```
 
+### Sync Jobs (Add Missing Jobs to Existing Run)
+
+```http
+POST /api/runs/123/sync-jobs
+```
+
+Adds missing jobs from the current template to an existing run. Returns:
+
+```json
+{
+  "added_count": 5,
+  "message": "Added 5 new job(s)"
+}
+```
+
+Use this when new jobs are added to the template after a run was created.
+
 ## Job Lifecycle
 
 ```
@@ -500,34 +522,57 @@ Returns the result stored in `job_config`:
 
 ## Integration with Runs
 
-When a run is created, initial jobs are automatically added:
+### Job Templates
+
+Jobs are defined in `apps/api/job_templates.py` as reusable templates:
 
 ```python
-# In routers/runs.py - create_run endpoint
+JOB_TEMPLATES = [
+    {"sequence": 0, "job_type": JobType.CLONE_REPO, "get_config": lambda ctx: {...}},
+    {"sequence": 1, "job_type": JobType.LIST_FILES, "get_config": lambda ctx: {...}},
+    # ... more templates
+]
 
-# Job 1: Clone repository
-clone_job = Job(
-    run_id=run.id,
-    job_type=JobType.CLONE_REPO,
-    job_config={
-        "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
-        "branch": body.branch,
-        "target_dir": "/workspace/repo",
-        "depth": 1,
-    },
-    status=JobStatus.PENDING,
-    sequence=0,
-)
-
-# Job 2: List files
-list_job = Job(
-    run_id=run.id,
-    job_type=JobType.LIST_FILES,
-    job_config={"target_dir": "/workspace/repo"},
-    status=JobStatus.PENDING,
-    sequence=1,
-)
+def create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences=None):
+    """Create Job objects from templates, optionally skipping existing sequences."""
 ```
+
+This allows:
+- Consistent job creation across `create_run` and `sync_jobs` endpoints
+- Easy addition of new jobs to the template
+- Syncing existing runs with new job templates
+
+### Default Job Sequence
+
+When a run is created, these jobs are automatically added:
+
+| Sequence | Type | Description |
+|----------|------|-------------|
+| 0 | CLONE_REPO | Clone user's project to `/workspace/repo` |
+| 1 | LIST_FILES | List files in `/workspace/repo` |
+| 2 | CLONE_REPO | Clone prime-rl framework to `/workspace/prime-rl` |
+| 3 | CUSTOM_COMMAND | Install uv package manager |
+| 4 | CUSTOM_COMMAND | Install prime-rl dependencies (`uv sync --all-extras`) |
+| 5 | CUSTOM_COMMAND | Install user's verifiers env (`uv pip install -e /workspace/repo`) |
+| 6 | CUSTOM_COMMAND | Verify installation (`uv pip list`) |
+
+### Sync Jobs Endpoint
+
+The `POST /api/runs/{run_id}/sync-jobs` endpoint adds missing jobs from the current template to existing runs:
+
+```python
+# 1. Get existing job sequences
+existing_sequences = {0, 1}  # e.g., old run only has jobs 0 and 1
+
+# 2. Create missing jobs (sequences 2-6)
+new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)
+
+# 3. Add to database
+```
+
+This is useful when new jobs are added to the template after a run was created. The UI has a "Sync Jobs" button in the Jobs panel.
+
+### Job Execution Trigger
 
 The `check_pending_run_statuses` Celery Beat task monitors runs and triggers job processing:
 
