@@ -144,7 +144,7 @@ class SSHCommandExecutor(CommandExecutor):
         command: str,
         *,
         working_dir: str | None = None,
-        timeout_seconds: int = 300,
+        timeout_seconds: int | None = 300,  # None = no timeout
         env: dict[str, str] | None = None,
     ) -> CommandResult:
         """Execute a command and return the result."""
@@ -161,12 +161,15 @@ class SSHCommandExecutor(CommandExecutor):
 
             logger.info(f"Executing command: {full_command[:100]}...")
 
-            # Execute with timeout
+            # Execute with optional timeout
             try:
-                ssh_result = await asyncio.wait_for(
-                    conn.run(full_command, check=False),
-                    timeout=timeout_seconds,
-                )
+                if timeout_seconds is not None:
+                    ssh_result = await asyncio.wait_for(
+                        conn.run(full_command, check=False),
+                        timeout=timeout_seconds,
+                    )
+                else:
+                    ssh_result = await conn.run(full_command, check=False)
 
                 result.stdout = ssh_result.stdout or ""
                 result.stderr = ssh_result.stderr or ""

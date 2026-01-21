@@ -222,6 +222,53 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     )
     db.add(list_job)
 
+    # Job 3: Clone prime-rl framework
+    clone_prime_rl_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.CLONE_REPO,
+        job_config={
+            "repo_url": "https://github.com/PrimeIntellect-ai/prime-rl.git",
+            "branch": "main",
+            "target_dir": "/workspace/prime-rl",
+            "depth": 1,
+        },
+        status=JobStatus.PENDING,
+        sequence=2,
+    )
+    db.add(clone_prime_rl_job)
+
+    # Job 4: Install uv package manager (no timeout)
+    # Use || true to ignore non-critical errors (e.g., fish shell config permission issues)
+    install_uv_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.CUSTOM_COMMAND,
+        job_config={
+            "command": "(curl -LsSf https://astral.sh/uv/install.sh | sh || true) && echo 'source $HOME/.local/bin/env' >> ~/.bashrc",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": None,
+        },
+        status=JobStatus.PENDING,
+        sequence=3,
+    )
+    db.add(install_uv_job)
+
+    # Job 5: Install prime-rl dependencies (no timeout)
+    uv_sync_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.CUSTOM_COMMAND,
+        job_config={
+            "command": "source $HOME/.local/bin/env && uv sync --all-extras",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": None,
+        },
+        status=JobStatus.PENDING,
+        sequence=4,
+    )
+    db.add(uv_sync_job)
+
     await db.commit()
 
     return run

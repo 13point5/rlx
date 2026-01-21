@@ -96,8 +96,6 @@ function JobStatusBadge({ status }: { status: JobStatus }) {
 function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
-  const config = job.config as Record<string, unknown>;
-  const result = config?.result as Record<string, unknown> | undefined;
 
   // Fetch job details (including commands with stdout/stderr) when expanded
   const { data: jobDetails, isLoading: isLoadingDetails } = useQuery({
@@ -217,68 +215,6 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
             </div>
           )}
 
-          {/* Clone repo details */}
-          {job.job_type === "CLONE_REPO" && config?.repo_url && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Repository</p>
-              <code className="text-xs">{config.repo_url as string}</code>
-              {config?.branch && (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  (branch: {config.branch as string})
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Custom command details */}
-          {job.job_type === "CUSTOM_COMMAND" && config?.command && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Command</p>
-              <pre className="whitespace-pre-wrap text-xs bg-muted rounded p-2 overflow-auto max-h-32">
-                {config.command as string}
-              </pre>
-            </div>
-          )}
-
-          {/* List files result */}
-          {job.job_type === "LIST_FILES" && result && (
-            <div className="space-y-2">
-              {(result.directories as string[] | undefined)?.length ? (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Directories ({(result.directories as string[]).length})
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {(result.directories as string[]).map((dir) => (
-                      <Badge key={dir} variant="secondary" className="text-xs font-mono">
-                        {dir}/
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {(result.files as string[] | undefined)?.length ? (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Files ({(result.files as string[]).length})
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {(result.files as string[]).slice(0, 20).map((file) => (
-                      <Badge key={file} variant="outline" className="text-xs font-mono">
-                        {file}
-                      </Badge>
-                    ))}
-                    {(result.files as string[]).length > 20 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{(result.files as string[]).length - 20} more
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          )}
-
           {/* Command output from job details */}
           {jobDetails?.commands && jobDetails.commands.length > 0 && (
             <div className="space-y-2">
@@ -323,12 +259,10 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                     </div>
                   )}
 
-                  {/* Stderr - only show if command failed */}
-                  {cmd.stderr && cmd.exit_code !== 0 && (
+                  {/* Stderr - show for all commands */}
+                  {cmd.stderr && (
                     <div className="space-y-1">
-                      <p className="text-xs text-orange-500">
-                        Stderr
-                      </p>
+                      <p className="text-xs text-orange-500">Stderr</p>
                       <pre className="whitespace-pre-wrap text-xs bg-orange-500/10 border border-orange-500/20 rounded p-2 overflow-auto max-h-48 font-mono text-orange-200">
                         {cmd.stderr}
                       </pre>

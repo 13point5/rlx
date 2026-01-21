@@ -134,7 +134,7 @@ def check_pending_jobs(self):
             )
 
             if not active_job:
-                # No active jobs, start the next one
+                # Find the next pending job by sequence
                 next_job = (
                     session.query(Job)
                     .filter(
@@ -146,6 +146,25 @@ def check_pending_jobs(self):
                 )
 
                 if next_job:
+                    # Check if there's a failed job with a lower sequence number
+                    # If so, don't start the next job - the sequence is blocked
+                    failed_job_blocking = (
+                        session.query(Job)
+                        .filter(
+                            Job.run_id == run.id,
+                            Job.status == JobStatus.FAILED,
+                            Job.sequence < next_job.sequence,
+                        )
+                        .first()
+                    )
+
+                    if failed_job_blocking:
+                        logger.info(
+                            f"[Fallback] Skipping job {next_job.id} for run {run.id} - "
+                            f"blocked by failed job {failed_job_blocking.id} (seq: {failed_job_blocking.sequence})"
+                        )
+                        continue
+
                     logger.info(f"[Fallback] Starting job {next_job.id} for run {run.id}")
                     if queue_job(next_job, session):
                         queued_count += 1
