@@ -100,6 +100,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <TableHeader>
               <TableRow>
                 <TableHead>Run</TableHead>
+                <TableHead>Config</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>GPU</TableHead>
                 <TableHead>Status</TableHead>
@@ -110,7 +111,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               {runs.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-sm text-muted-foreground"
                   >
                     No runs yet.
@@ -128,10 +129,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                           <div className="font-medium hover:underline">
                             {run.name}
                           </div>
-                          <div className="text-muted-foreground text-xs">
-                            {run.config_path}
-                          </div>
                         </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {run.config_name}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">

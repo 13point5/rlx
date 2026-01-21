@@ -199,6 +199,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     ctx = {
         "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
         "branch": strip_origin_prefix(body.branch),
+        "config_name": body.config_name,
     }
     jobs = create_jobs_from_templates(run.id, clerk_user_id, ctx)
     for job in jobs:
@@ -328,6 +329,7 @@ async def sync_jobs(run_id: int, user: CurrentUser, db: DbSession):
     ctx = {
         "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
         "branch": strip_origin_prefix(run.branch),
+        "config_name": run.config_name,
     }
     new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)
 

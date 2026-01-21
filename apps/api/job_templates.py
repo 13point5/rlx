@@ -62,9 +62,18 @@ JOB_TEMPLATES = [
         "sequence": 6,
         "job_type": JobType.CUSTOM_COMMAND,
         "get_config": lambda ctx: {
-            "command": "source $HOME/.local/bin/env && uv pip list",
+            "command": "source $HOME/.local/bin/env && uv run python -c \"import prime_rl; print('prime_rl imported successfully')\"",
             "working_dir": "/workspace/prime-rl",
             "timeout_seconds": 60,
+        },
+    },
+    {
+        "sequence": 7,
+        "job_type": JobType.CUSTOM_COMMAND,
+        "get_config": lambda ctx: {
+            "command": "cat /workspace/repo/rlx.toml",
+            "working_dir": "/workspace/repo",
+            "timeout_seconds": 30,
         },
     },
 ]
