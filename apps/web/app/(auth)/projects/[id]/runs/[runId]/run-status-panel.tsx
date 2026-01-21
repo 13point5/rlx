@@ -119,20 +119,20 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>Status</CardTitle>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <CardTitle>Status</CardTitle>
           <Badge variant="outline" className={cn("capitalize", statusClass)}>
             {isLoading ? "Loading" : status.toLowerCase()}
           </Badge>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={isTerminated || isTerminating}
-            onClick={handleTerminate}
-          >
-            {isTerminating ? "Terminating..." : "Terminate"}
-          </Button>
         </div>
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={isTerminated || isTerminating}
+          onClick={handleTerminate}
+        >
+          {isTerminating ? "Terminating..." : "Terminate"}
+        </Button>
       </CardHeader>
       <CardContent className="space-y-3">
         {(errorMessage || terminateError) && (

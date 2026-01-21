@@ -36,7 +36,7 @@ export default async function RunPage({ params }: RunPageProps) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <div>Branch: {run.branch}</div>
-            <div>Config: {run.config_path}</div>
+            <div>Config: {run.config_name}</div>
             <div>
               GPU: {run.gpu_type} x{run.gpu_count}
             </div>
