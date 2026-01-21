@@ -5,8 +5,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Job, JobStatus, JobType, Project, Run, RunStatus, UserSshKey
+from database import Project, Run, RunStatus, UserSshKey
 from deps import CurrentUser, DbSession
+from job_templates import create_jobs_from_templates
 from services.prime_intellect import (
     DEFAULT_IMAGE,
     PrimeIntellectAPIError,
@@ -189,100 +190,14 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     await db.commit()
     await db.refresh(run)
 
-    # Create initial jobs for the run
-    # Job 1: Clone the repository
-    repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}.git"
-    # Strip 'origin/' prefix for git clone (UI sends 'origin/main', git needs 'main')
-    clone_branch = strip_origin_prefix(body.branch)
-    clone_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.CLONE_REPO,
-        job_config={
-            "repo_url": repo_url,
-            "branch": clone_branch,
-            "target_dir": "/workspace/repo",
-            "depth": 1,  # Shallow clone for speed
-        },
-        status=JobStatus.PENDING,
-        sequence=0,
-    )
-    db.add(clone_job)
-
-    # Job 2: List files after clone
-    list_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.LIST_FILES,
-        job_config={
-            "target_dir": "/workspace/repo",
-        },
-        status=JobStatus.PENDING,
-        sequence=1,
-    )
-    db.add(list_job)
-
-    # Job 3: Clone prime-rl framework
-    clone_prime_rl_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.CLONE_REPO,
-        job_config={
-            "repo_url": "https://github.com/PrimeIntellect-ai/prime-rl.git",
-            "branch": "main",
-            "target_dir": "/workspace/prime-rl",
-            "depth": 1,
-        },
-        status=JobStatus.PENDING,
-        sequence=2,
-    )
-    db.add(clone_prime_rl_job)
-
-    # Job 4: Install uv package manager (no timeout)
-    # Use || true to ignore non-critical errors (e.g., fish shell config permission issues)
-    install_uv_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.CUSTOM_COMMAND,
-        job_config={
-            "command": "(curl -LsSf https://astral.sh/uv/install.sh | sh || true) && echo 'source $HOME/.local/bin/env' >> ~/.bashrc",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
-        status=JobStatus.PENDING,
-        sequence=3,
-    )
-    db.add(install_uv_job)
-
-    # Job 5: Install prime-rl dependencies (no timeout)
-    uv_sync_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.CUSTOM_COMMAND,
-        job_config={
-            "command": "source $HOME/.local/bin/env && uv sync --all-extras",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
-        status=JobStatus.PENDING,
-        sequence=4,
-    )
-    db.add(uv_sync_job)
-
-    # Job 6: Install user's verifiers environment into prime-rl (no timeout)
-    install_verifiers_env_job = Job(
-        run_id=run.id,
-        clerk_user_id=clerk_user_id,
-        job_type=JobType.CUSTOM_COMMAND,
-        job_config={
-            "command": "source $HOME/.local/bin/env && uv pip install -e /workspace/repo",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
-        status=JobStatus.PENDING,
-        sequence=5,
-    )
-    db.add(install_verifiers_env_job)
+    # Create initial jobs for the run using templates
+    ctx = {
+        "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
+        "branch": strip_origin_prefix(body.branch),
+    }
+    jobs = create_jobs_from_templates(run.id, clerk_user_id, ctx)
+    for job in jobs:
+        db.add(job)
 
     await db.commit()
 
