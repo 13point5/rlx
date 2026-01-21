@@ -4,7 +4,16 @@ from enum import StrEnum
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -142,7 +151,8 @@ class Run(Base):
     clerk_user_id = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     branch = Column(String, nullable=False)
-    config_path = Column(String, nullable=False)
+    # Config name from rlx.toml (resolved at job execution time)
+    config_name = Column(String, nullable=False)
     status = Column(String, nullable=False, default="provisioning")
     provider = Column(String, nullable=False)
     region = Column(String, nullable=False)

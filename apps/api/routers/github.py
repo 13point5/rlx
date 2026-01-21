@@ -375,6 +375,114 @@ async def get_project_branches(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/projects/{project_id}/rlx-config")
+async def get_project_rlx_config(
+    project_id: int,
+    user: CurrentUser,
+    db: DbSession,
+    branch: str = "main",
+):
+    """
+    Fetch rlx.toml configuration for a project's GitHub repository.
+
+    Query params:
+    - branch: Branch to fetch from (default: main)
+
+    Returns:
+    - configs: List of config entries with name, description, and paths
+    - found: Whether rlx.toml exists in the repository
+    """
+    clerk_user_id = user.get("sub")
+
+    # Look up the project
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.clerk_user_id == clerk_user_id)
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get GitHub connection and valid token
+    connection = await get_github_connection(clerk_user_id, db)
+    access_token = await get_valid_github_token(connection, db)
+
+    try:
+        rlx_config = await github_service.fetch_rlx_config(
+            access_token,
+            owner=project.repo_owner,
+            repo=project.repo_name,
+            branch=branch,
+        )
+
+        return {
+            "configs": [
+                {
+                    "name": entry.name,
+                    "description": entry.description,
+                    "config": entry.config,
+                    "inference": entry.inference,
+                    "orchestrator": entry.orchestrator,
+                    "trainer": entry.trainer,
+                    "env_vars": entry.env_vars,
+                }
+                for entry in rlx_config.configs
+            ],
+            "found": rlx_config.found,
+        }
+
+    except GitHubTokenInvalidError:
+        # Token became invalid, try to refresh
+        new_token = await github_service.refresh_token(connection, db)
+        if not new_token:
+            await db.delete(connection)
+            await db.commit()
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub token expired. Please reconnect your GitHub account.",
+            )
+        # Retry with new token
+        try:
+            rlx_config = await github_service.fetch_rlx_config(
+                new_token,
+                owner=project.repo_owner,
+                repo=project.repo_name,
+                branch=branch,
+            )
+            return {
+                "configs": [
+                    {
+                        "name": entry.name,
+                        "description": entry.description,
+                        "config": entry.config,
+                        "inference": entry.inference,
+                        "orchestrator": entry.orchestrator,
+                        "trainer": entry.trainer,
+                        "env_vars": entry.env_vars,
+                    }
+                    for entry in rlx_config.configs
+                ],
+                "found": rlx_config.found,
+            }
+        except GitHubAPIError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    except GitHubNoAccessError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+        )
+
+    except GitHubRateLimitError:
+        raise HTTPException(
+            status_code=429,
+            detail="GitHub API rate limit exceeded. Please try again later.",
+        )
+
+    except GitHubAPIError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/disconnect")
 async def disconnect(user: CurrentUser, db: DbSession):
     """Disconnect GitHub from the current user's account."""

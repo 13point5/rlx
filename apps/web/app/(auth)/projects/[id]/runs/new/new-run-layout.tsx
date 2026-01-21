@@ -1,17 +1,28 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { RefreshCwIcon } from "lucide-react";
 import { GpuAvailabilitySkeleton, GpuSelectionSkeleton } from "./loading";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
-import type { GpuInstance } from "@/lib/types";
+import type { GpuInstance, RlxConfigEntry } from "@/lib/types";
 import type { ComputedGpuSummary } from "@/lib/gpu-utils";
 import { computeGpuSummary } from "@/lib/gpu-utils";
-import { startRun, getAllGpuAvailability, getProjectBranches } from "@/app/actions/api";
+import {
+  startRun,
+  getAllGpuAvailability,
+  getProjectBranches,
+  getProjectRlxConfig,
+} from "@/app/actions/api";
 import { RunFields } from "./run-fields";
+import type { ConfigsState } from "./run-fields";
 import type { GpuDataResult, BranchesDataResult } from "./new-run-data";
 
 const GpuSelection = dynamic(
@@ -34,6 +45,8 @@ interface NewRunLayoutProps {
   projectId: number;
   gpuDataResult: GpuDataResult;
   branchesDataResult: BranchesDataResult;
+  repoOwner: string;
+  repoName: string;
   selectedGpu?: string;
   selectedCount?: string;
 }
@@ -47,13 +60,15 @@ export function NewRunLayout({
   projectId,
   gpuDataResult: initialGpuDataResult,
   branchesDataResult: initialBranchesDataResult,
+  repoOwner,
+  repoName,
   selectedGpu: initialSelectedGpu,
   selectedCount: initialSelectedCount,
 }: NewRunLayoutProps) {
   const router = useRouter();
   const [isStarting, startTransition] = useTransition();
   const [isRefreshing, refreshTransition] = useTransition();
-  
+
   // GPU data state (can be refreshed)
   const [gpuData, setGpuData] = useState<{
     summary: ComputedGpuSummary | undefined;
@@ -62,18 +77,26 @@ export function NewRunLayout({
   }>({
     summary: initialGpuDataResult.summary,
     instances: initialGpuDataResult.instances,
-    error: initialGpuDataResult.success ? null : (initialGpuDataResult.error ?? "Unknown error"),
+    error: initialGpuDataResult.success
+      ? null
+      : (initialGpuDataResult.error ?? "Unknown error"),
   });
 
   // Selection state
   const [selectedGpu, setSelectedGpu] = useState(initialSelectedGpu);
   const [selectedCount, setSelectedCount] = useState(initialSelectedCount);
-  const [selectionState, setSelectionState] = useState<SelectedInstanceState | null>(null);
-  
+  const [selectionState, setSelectionState] =
+    useState<SelectedInstanceState | null>(null);
+
   // Compute initial default branch from server-fetched data
   const initialDefaultBranch = (() => {
-    if (initialBranchesDataResult.success && initialBranchesDataResult.branches.length > 0) {
-      const defaultBranchName = initialBranchesDataResult.branches.includes("main")
+    if (
+      initialBranchesDataResult.success &&
+      initialBranchesDataResult.branches.length > 0
+    ) {
+      const defaultBranchName = initialBranchesDataResult.branches.includes(
+        "main"
+      )
         ? "main"
         : initialBranchesDataResult.branches[0];
       return `origin/${defaultBranchName}`;
@@ -84,7 +107,9 @@ export function NewRunLayout({
   // Form state
   const [runName, setRunName] = useState("");
   const [branch, setBranch] = useState(initialDefaultBranch);
-  const [config, setConfig] = useState("configs/ppo.yaml");
+  const [selectedConfig, setSelectedConfig] = useState<RlxConfigEntry | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Branches state - initialized from server-fetched data
@@ -101,7 +126,17 @@ export function NewRunLayout({
     hasMore: initialBranchesDataResult.hasMore,
     isLoading: false,
     isLoadingMore: false,
-    error: initialBranchesDataResult.success ? null : (initialBranchesDataResult.error ?? "Failed to load branches"),
+    error: initialBranchesDataResult.success
+      ? null
+      : (initialBranchesDataResult.error ?? "Failed to load branches"),
+  });
+
+  // Configs state - fetched when branch changes
+  const [configsState, setConfigsState] = useState<ConfigsState>({
+    configs: [],
+    found: false,
+    isLoading: true,
+    error: null,
   });
 
   // Fetch more branches (for pagination only, initial data comes from server)
@@ -139,10 +174,57 @@ export function NewRunLayout({
     fetchMoreBranches(branchesState.page + 1);
   }, [fetchMoreBranches, branchesState.page]);
 
+  // Fetch configs when branch changes
+  const fetchConfigs = useCallback(
+    async (branchName: string) => {
+      setConfigsState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+      // Strip "origin/" prefix for API call
+      const cleanBranch = branchName.startsWith("origin/")
+        ? branchName.slice(7)
+        : branchName;
+
+      const result = await getProjectRlxConfig({
+        projectId,
+        branch: cleanBranch,
+      });
+
+      if (!result.success || !result.data) {
+        setConfigsState({
+          configs: [],
+          found: false,
+          isLoading: false,
+          error: result.error ?? "Failed to load configs",
+        });
+        return;
+      }
+
+      setConfigsState({
+        configs: result.data.configs,
+        found: result.data.found,
+        isLoading: false,
+        error: null,
+      });
+
+      // Auto-select first config if available
+      if (result.data.configs.length > 0) {
+        setSelectedConfig(result.data.configs[0]);
+      } else {
+        setSelectedConfig(null);
+      }
+    },
+    [projectId]
+  );
+
+  // Fetch configs on initial mount and when branch changes
+  useEffect(() => {
+    fetchConfigs(branch);
+  }, [branch, fetchConfigs]);
+
   // Filter instances client-side based on selection (instant, no refetch!)
   const filteredInstances = useMemo(() => {
     if (!gpuData.instances || !selectedGpu || !selectedCount) return [];
-    
+
     return gpuData.instances.filter(
       (instance) =>
         instance.gpuType === selectedGpu &&
@@ -191,7 +273,7 @@ export function NewRunLayout({
   };
 
   const handleStartRun = () => {
-    if (!selectedInstance) return;
+    if (!selectedInstance || !selectedConfig) return;
     setError(null);
 
     startTransition(async () => {
@@ -199,7 +281,7 @@ export function NewRunLayout({
         projectId,
         name: runName || "New run",
         branch,
-        config,
+        configName: selectedConfig.name,
         instance: selectedInstance,
       });
 
@@ -220,25 +302,26 @@ export function NewRunLayout({
           <RunFields
             runName={runName}
             branch={branch}
-            config={config}
+            selectedConfig={selectedConfig}
             branchesState={branchesState}
+            configsState={configsState}
+            repoOwner={repoOwner}
+            repoName={repoName}
             onRunNameChange={setRunName}
             onBranchChange={setBranch}
-            onConfigChange={setConfig}
+            onConfigChange={setSelectedConfig}
             onLoadMoreBranches={handleLoadMoreBranches}
             className="lg:flex-1"
           />
           <div className="flex flex-col gap-2 lg:w-[140px]">
             <Button
               className="w-full md:w-auto"
-              disabled={!selectedInstance || isStarting}
+              disabled={!selectedInstance || !selectedConfig || isStarting}
               onClick={handleStartRun}
             >
               {isStarting ? "Starting..." : "Start Run"}
             </Button>
-            {error && (
-              <span className="text-sm text-destructive">{error}</span>
-            )}
+            {error && <span className="text-sm text-destructive">{error}</span>}
           </div>
         </div>
       </div>

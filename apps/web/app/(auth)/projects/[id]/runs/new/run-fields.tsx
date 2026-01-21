@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { LabeledField } from "@/components/labeled-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { RlxConfigEntry } from "@/lib/types";
 
-interface BranchesState {
+export interface BranchesState {
   branches: string[];
   isLoading: boolean;
   isLoadingMore: boolean;
@@ -19,14 +20,24 @@ interface BranchesState {
   error: string | null;
 }
 
+export interface ConfigsState {
+  configs: RlxConfigEntry[];
+  found: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
+
 interface RunFieldsProps {
   runName: string;
   branch: string;
-  config: string;
+  selectedConfig: RlxConfigEntry | null;
   branchesState: BranchesState;
+  configsState: ConfigsState;
+  repoOwner: string;
+  repoName: string;
   onRunNameChange: (value: string) => void;
   onBranchChange: (value: string) => void;
-  onConfigChange: (value: string) => void;
+  onConfigChange: (config: RlxConfigEntry | null) => void;
   onLoadMoreBranches: () => void;
   className?: string;
 }
@@ -34,8 +45,11 @@ interface RunFieldsProps {
 export function RunFields({
   runName,
   branch,
-  config,
+  selectedConfig,
   branchesState,
+  configsState,
+  repoOwner,
+  repoName,
   onRunNameChange,
   onBranchChange,
   onConfigChange,
@@ -43,6 +57,11 @@ export function RunFields({
   className,
 }: RunFieldsProps) {
   const { branches, isLoading, isLoadingMore, hasMore, error } = branchesState;
+  const { configs, found: configsFound, isLoading: configsLoading, error: configsError } = configsState;
+
+  // Build GitHub URL for the selected config's rlx.toml
+  const cleanBranch = branch.startsWith("origin/") ? branch.slice(7) : branch;
+  const rlxTomlUrl = `https://github.com/${repoOwner}/${repoName}/blob/${cleanBranch}/rlx.toml`;
 
   return (
     <div
@@ -115,14 +134,83 @@ export function RunFields({
           </SelectContent>
         </Select>
       </LabeledField>
-      <LabeledField label="Config" htmlFor="run-config" className="min-w-0">
-        <Select value={config} onValueChange={onConfigChange}>
+      <LabeledField
+        label={
+          <span className="flex items-center gap-1.5">
+            Config
+            {configsFound && (
+              <a
+                href={rlxTomlUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-foreground"
+                title="Open rlx.toml on GitHub"
+              >
+                <ExternalLink className="size-3.5" />
+              </a>
+            )}
+          </span>
+        }
+        htmlFor="run-config"
+        className="min-w-0"
+      >
+        <Select
+          value={selectedConfig?.name ?? ""}
+          onValueChange={(name) => {
+            const config = configs.find((c) => c.name === name) ?? null;
+            onConfigChange(config);
+          }}
+          disabled={configsLoading || !configsFound}
+        >
           <SelectTrigger id="run-config" className="w-full">
-            <SelectValue placeholder="Select config" />
+            {configsLoading ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Loading...
+              </span>
+            ) : !configsFound ? (
+              <span className="text-muted-foreground">No rlx.toml</span>
+            ) : (
+              <SelectValue placeholder="Select config">
+                {selectedConfig?.name}
+              </SelectValue>
+            )}
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="configs/ppo.yaml">configs/ppo.yaml</SelectItem>
-            <SelectItem value="configs/dpo.yaml">configs/dpo.yaml</SelectItem>
+            {configsError ? (
+              <div className="px-2 py-2 text-xs text-destructive">{configsError}</div>
+            ) : !configsFound ? (
+              <div className="space-y-2 px-3 py-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">No rlx.toml found</p>
+                <p>Create an rlx.toml file in your repository root:</p>
+                <pre className="mt-2 rounded bg-muted p-2 text-[10px]">
+{`[sft-baseline]
+description = "SFT training"
+config = "configs/sft.toml"
+
+[rl-grpo]
+description = "GRPO RL"
+config = "configs/rl.toml"`}
+                </pre>
+              </div>
+            ) : configs.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                No configs defined in rlx.toml
+              </div>
+            ) : (
+              configs.map((configEntry) => (
+                <SelectItem key={configEntry.name} value={configEntry.name}>
+                  <div className="flex flex-col">
+                    <span>{configEntry.name}</span>
+                    {configEntry.description && (
+                      <span className="text-xs text-muted-foreground">
+                        {configEntry.description}
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </LabeledField>

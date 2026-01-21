@@ -1,6 +1,8 @@
+import base64
 import logging
 import os
 import re
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -655,3 +657,112 @@ async def fetch_repo_branches(
         per_page=per_page,
         has_more=len(data) == per_page,
     )
+
+
+@dataclass
+class RlxConfigEntry:
+    """A single config entry from rlx.toml."""
+
+    name: str
+    description: str | None
+    config: str | None  # Single combined config path
+    inference: str | None
+    orchestrator: str | None
+    trainer: str | None
+    env_vars: dict[str, str] | None  # Environment variables for the run
+
+
+@dataclass
+class RlxConfigResponse:
+    """Response for fetching rlx.toml configuration."""
+
+    configs: list[RlxConfigEntry]
+    found: bool  # Whether rlx.toml exists in the repo
+
+
+async def fetch_rlx_config(
+    access_token: str,
+    owner: str,
+    repo: str,
+    branch: str = "main",
+) -> RlxConfigResponse:
+    """
+    Fetch and parse rlx.toml from a repository.
+
+    Uses GitHub Contents API to fetch the file, then parses TOML content.
+
+    Args:
+        access_token: GitHub OAuth token
+        owner: Repository owner (user or org)
+        repo: Repository name
+        branch: Branch to fetch from (default: main)
+
+    Returns:
+        RlxConfigResponse with list of config entries and found status.
+
+    Raises:
+        GitHubTokenInvalidError: If the token is invalid (401)
+        GitHubNoAccessError: If the user doesn't have access (403)
+        GitHubRateLimitError: If rate limit is exceeded (429)
+        GitHubAPIError: For other API errors
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/contents/rlx.toml",
+            params={"ref": branch},
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+
+        if response.status_code == 401:
+            raise GitHubTokenInvalidError("GitHub token is invalid or expired")
+
+        if response.status_code == 404:
+            # File not found - this is expected, return empty response
+            return RlxConfigResponse(configs=[], found=False)
+
+        if response.status_code == 403:
+            if "rate limit" in response.text.lower():
+                raise GitHubRateLimitError("GitHub API rate limit exceeded")
+            raise GitHubNoAccessError(f"No access to repository {owner}/{repo}")
+
+        if response.status_code == 429:
+            raise GitHubRateLimitError("GitHub API rate limit exceeded")
+
+        if response.status_code != 200:
+            raise GitHubAPIError(f"GitHub API error: {response.status_code}")
+
+        data = response.json()
+
+    # Decode base64 content
+    content_base64 = data.get("content", "")
+    try:
+        content_bytes = base64.b64decode(content_base64)
+        toml_data = tomllib.loads(content_bytes.decode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Failed to parse rlx.toml: {e}")
+        # Return found=True but empty configs if parsing fails
+        return RlxConfigResponse(configs=[], found=True)
+
+    # Parse each top-level section as a config entry
+    config_entries: list[RlxConfigEntry] = []
+
+    for name, entry in toml_data.items():
+        if not isinstance(entry, dict):
+            continue
+
+        config_entries.append(
+            RlxConfigEntry(
+                name=name,
+                description=entry.get("description"),
+                config=entry.get("config"),
+                inference=entry.get("inference"),
+                orchestrator=entry.get("orchestrator"),
+                trainer=entry.get("trainer"),
+                env_vars=entry.get("env_vars"),
+            )
+        )
+
+    return RlxConfigResponse(configs=config_entries, found=True)

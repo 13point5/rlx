@@ -11,6 +11,7 @@ import type {
   JobResponse,
   JobDetailResponse,
   Project,
+  RlxConfigResponse,
   RunInstanceSelection,
   RunRecord,
   RunStatusResponse,
@@ -470,6 +471,66 @@ export async function getProjectBranches(options: {
   }
 }
 
+export async function getProjectRlxConfig(options: {
+  projectId: number;
+  branch?: string;
+}): Promise<{
+  success: boolean;
+  data?: RlxConfigResponse;
+  error?: string;
+}> {
+  const { getToken, userId } = await auth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return { success: false, error: "Could not get session token" };
+    }
+
+    const params = new URLSearchParams();
+    if (options.branch) params.set("branch", options.branch);
+
+    const url = `${API_BASE_URL}/api/github/projects/${options.projectId}/rlx-config${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return {
+      success: true,
+      data: {
+        configs: response.data.configs,
+        found: response.data.found,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching project rlx config:", error);
+
+    if (error instanceof AxiosError) {
+      const detail = error.response?.data?.detail;
+      return {
+        success: false,
+        error:
+          detail || `API error: ${error.response?.status || error.message}`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 // =============================================================================
 // GPU Availability Actions
 // =============================================================================
@@ -632,7 +693,7 @@ export async function startRun(input: {
   projectId: number;
   name: string;
   branch: string;
-  config: string;
+  configName: string; // Config name from rlx.toml (resolved at job execution time)
   instance: RunInstanceSelection & { instanceId: string };
 }): Promise<{
   success: boolean;
@@ -658,7 +719,7 @@ export async function startRun(input: {
         project_id: input.projectId,
         name: input.name,
         branch: input.branch,
-        config_path: input.config,
+        config_name: input.configName,
         instance: {
           cloud_id: input.instance.cloudId,
           gpu_type: input.instance.gpuType,

@@ -48,7 +48,7 @@ class CreateRunRequest(BaseModel):
     project_id: int
     name: str
     branch: str
-    config_path: str
+    config_name: str  # Config name from rlx.toml (resolved at job execution time)
     instance: InstanceSelection
 
 
@@ -57,7 +57,7 @@ class RunResponse(BaseModel):
     project_id: int
     name: str
     branch: str
-    config_path: str
+    config_name: str
     status: str
     provider: str
     region: str
@@ -177,7 +177,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
         clerk_user_id=clerk_user_id,
         name=body.name,
         branch=body.branch,
-        config_path=body.config_path,
+        config_name=body.config_name,
         status=status_value,
         provider=body.instance.provider,
         region=body.instance.region,

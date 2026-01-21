@@ -10,13 +10,15 @@ export default async function NewRunPage({ params, searchParams }: NewRunPagePro
   const search = await searchParams;
   const { id } = await params;
   const projectId = Number(id);
-  const { gpuDataResult, branchesDataResult, selectedGpu, selectedCount } = await getNewRunData(search, projectId);
+  const { gpuDataResult, branchesDataResult, projectDataResult, selectedGpu, selectedCount } = await getNewRunData(search, projectId);
 
   return (
     <NewRunLayout
       projectId={projectId}
       gpuDataResult={gpuDataResult}
       branchesDataResult={branchesDataResult}
+      repoOwner={projectDataResult.project?.repo_owner ?? ""}
+      repoName={projectDataResult.project?.repo_name ?? ""}
       selectedGpu={selectedGpu}
       selectedCount={selectedCount}
     />

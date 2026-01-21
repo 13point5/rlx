@@ -28,6 +28,22 @@ export interface GitHubBranchesResponse {
   has_more: boolean;
 }
 
+// RLX Config Types
+export interface RlxConfigEntry {
+  name: string;
+  description: string | null;
+  config: string | null;
+  inference: string | null;
+  orchestrator: string | null;
+  trainer: string | null;
+  env_vars: Record<string, string> | null;
+}
+
+export interface RlxConfigResponse {
+  configs: RlxConfigEntry[];
+  found: boolean;
+}
+
 export type Project = {
   id: number;
   repo_id: number;
@@ -121,7 +137,7 @@ export interface RunRecord {
   name: string;
   status: string;
   branch: string;
-  config_path: string;
+  config_name: string;
   provider: string;
   region: string;
   data_center: string | null;
