@@ -269,6 +269,21 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     )
     db.add(uv_sync_job)
 
+    # Job 6: Install user's verifiers environment into prime-rl (no timeout)
+    install_verifiers_env_job = Job(
+        run_id=run.id,
+        clerk_user_id=clerk_user_id,
+        job_type=JobType.CUSTOM_COMMAND,
+        job_config={
+            "command": "source $HOME/.local/bin/env && uv pip install -e /workspace/repo",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": None,
+        },
+        status=JobStatus.PENDING,
+        sequence=5,
+    )
+    db.add(install_verifiers_env_job)
+
     await db.commit()
 
     return run
