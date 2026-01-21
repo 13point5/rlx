@@ -16,23 +16,61 @@ import {
   RotateCcw,
   RefreshCw,
 } from "lucide-react";
-import { getRunJobs, getJobDetails, retryJob, syncRunJobs } from "@/app/actions/api";
+import {
+  getRunJobs,
+  getJobDetails,
+  retryJob,
+  syncRunJobs,
+} from "@/app/actions/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { JobResponse, JobDetailResponse, JobStatus, JobType } from "@/lib/types";
+import type {
+  JobResponse,
+  JobDetailResponse,
+  JobStatus,
+  JobType,
+} from "@/lib/types";
 
 interface JobsPanelProps {
   runId: number;
   runStatus: string;
 }
 
-const jobTypeLabels: Record<JobType, string> = {
-  CLONE_REPO: "Clone Repository",
-  LIST_FILES: "List Files",
-  CUSTOM_COMMAND: "Run Command",
-};
+function getJobTitle(job: JobResponse): string {
+  const config = job.config;
+
+  switch (job.job_type) {
+    case "CLONE_REPO": {
+      const repoUrl = config?.repo_url as string | undefined;
+      if (repoUrl) {
+        // Extract repo name from URL (e.g., "https://github.com/owner/repo.git" -> "repo")
+        const match = repoUrl.match(/\/([^/]+?)(\.git)?$/);
+        const repoName = match?.[1] || repoUrl;
+        const targetDir = config?.target_dir as string | undefined;
+        return `Clone ${repoName}${targetDir ? ` → ${targetDir}` : ""}`;
+      }
+      return "Clone Repository";
+    }
+    case "LIST_FILES": {
+      const targetDir = config?.target_dir as string | undefined;
+      return targetDir ? `List files in ${targetDir}` : "List Files";
+    }
+    case "CUSTOM_COMMAND": {
+      const command = config?.command as string | undefined;
+      if (command) {
+        // Truncate long commands
+        const truncated =
+          command.length > 60 ? command.slice(0, 60) + "..." : command;
+        return truncated;
+      }
+      return "Run Command";
+    }
+    default:
+      return job.job_type;
+  }
+}
 
 const jobTypeIcons: Record<JobType, React.ReactNode> = {
   CLONE_REPO: <FolderGit2 className="h-4 w-4" />,
@@ -129,10 +167,6 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
     },
   });
 
-  // Job is expandable if it has run or has details to show
-  const canExpand =
-    job.status !== "PENDING" && job.status !== "QUEUED";
-
   // Job can be retried if it's in a failed/cancelled/timeout state
   const canRetry =
     job.status === "FAILED" ||
@@ -142,59 +176,66 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
   return (
     <div className="border-b border-border last:border-0">
       <div
-        className={cn(
-          "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors",
-          canExpand && "hover:bg-muted/50 cursor-pointer"
-        )}
-        onClick={() => canExpand && setExpanded(!expanded)}
-        role={canExpand ? "button" : undefined}
-        tabIndex={canExpand ? 0 : undefined}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+        role="button"
+        tabIndex={0}
         onKeyDown={(e) => {
-          if (canExpand && (e.key === "Enter" || e.key === " ")) {
+          if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             setExpanded(!expanded);
           }
         }}
       >
         <span className="text-muted-foreground">
-          {canExpand ? (
-            expanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )
-          ) : (
-            <span className="w-4" />
-          )}
-        </span>
-        <span className="text-muted-foreground">
           {jobTypeIcons[job.job_type]}
         </span>
-        <span className="flex-1 font-medium text-sm">
-          {jobTypeLabels[job.job_type] ?? job.job_type}
+        <span
+          className="font-medium text-sm truncate max-w-[400px]"
+          title={getJobTitle(job)}
+        >
+          {getJobTitle(job)}
         </span>
-        <div className="flex items-center gap-2">
-          <JobStatusBadge status={job.status} />
-          {canRetry && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs"
-              onClick={(e) => {
-                e.stopPropagation();
-                retryMutation.mutate();
-              }}
-              disabled={retryMutation.isPending}
-            >
-              {retryMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3 w-3" />
-              )}
-              <span className="ml-1">Retry</span>
-            </Button>
+        <JobStatusBadge status={job.status} />
+        {job.completed_at && job.started_at && (
+          <span className="text-xs text-muted-foreground">
+            {(() => {
+              const durationMs =
+                new Date(job.completed_at).getTime() -
+                new Date(job.started_at).getTime();
+              return durationMs < 1000
+                ? `${durationMs}ms`
+                : `${(durationMs / 1000).toFixed(1)}s`;
+            })()}
+          </span>
+        )}
+        <div className="flex-1" />
+        {canRetry && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              retryMutation.mutate();
+            }}
+            disabled={retryMutation.isPending}
+          >
+            {retryMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3 w-3" />
+            )}
+            <span className="ml-1">Retry</span>
+          </Button>
+        )}
+        <span className="text-muted-foreground">
+          {expanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
           )}
-        </div>
+        </span>
       </div>
 
       {expanded && (
@@ -230,7 +271,9 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                         variant="outline"
                         className={cn(
                           "text-xs",
-                          cmd.exit_code === 0 ? "text-green-500" : "text-red-500"
+                          cmd.exit_code === 0
+                            ? "text-green-500"
+                            : "text-red-500"
                         )}
                       >
                         exit: {cmd.exit_code}
@@ -295,7 +338,11 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
 export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
   const queryClient = useQueryClient();
 
-  const { data: jobs, isLoading, error } = useQuery({
+  const {
+    data: jobs,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["run-jobs", runId],
     queryFn: async () => {
       const response = await getRunJobs(runId);
@@ -339,7 +386,8 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
     },
   });
 
-  const sortedJobs = jobs?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
+  const sortedJobs =
+    jobs?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
 
   return (
     <Card>
@@ -347,7 +395,9 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             Jobs
-            {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            {isLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
           </CardTitle>
           <Button
             size="sm"

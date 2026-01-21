@@ -40,14 +40,17 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
     },
     enabled: overrideStatus !== "TERMINATED",
     refetchInterval: (query) => {
-      const currentStatus = (query.state.data as RunStatusResponse | undefined)?.status;
+      const currentStatus = (query.state.data as RunStatusResponse | undefined)
+        ?.status;
       if (currentStatus === "TERMINATED") {
         return false;
       }
 
       if (query.state.error) {
         try {
-          const parsed = JSON.parse((query.state.error as Error).message) as RunStatusErrorPayload;
+          const parsed = JSON.parse(
+            (query.state.error as Error).message
+          ) as RunStatusErrorPayload;
           if (parsed?.last_known_status === "TERMINATED") {
             return false;
           }
@@ -79,7 +82,9 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
     }
 
     try {
-      const parsed = JSON.parse((error as Error).message) as RunStatusErrorPayload;
+      const parsed = JSON.parse(
+        (error as Error).message
+      ) as RunStatusErrorPayload;
       if (parsed && parsed.message && parsed.last_known_status) {
         return parsed;
       }
@@ -90,7 +95,8 @@ export function RunStatusPanel({ runId, initialStatus }: RunStatusPanelProps) {
     return null;
   }, [error]);
 
-  const errorMessage = errorPayload?.message || (error as Error | null)?.message;
+  const errorMessage =
+    errorPayload?.message || (error as Error | null)?.message;
   const lastKnownStatus = errorPayload?.last_known_status;
   const lastUpdatedAt = errorPayload?.last_updated_at;
 
