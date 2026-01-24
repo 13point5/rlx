@@ -88,6 +88,18 @@ uv run alembic history
 
 # Add new dependencies
 uv add <package-name>
+
+# Start Redis (required for job queue)
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+# Start Celery worker (in separate terminal)
+PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
+
+# Start Celery beat scheduler (in separate terminal, for periodic tasks)
+PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
+
+# Optional: Flower monitoring UI (http://localhost:5555)
+uv run celery -A celery_app flower --port=5555
 ```
 
 ---
