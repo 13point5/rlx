@@ -8,72 +8,43 @@ from database import Job, JobStatus, JobType
 JOB_TEMPLATES = [
     {
         "sequence": 0,
-        "job_type": JobType.CLONE_REPO,
-        "get_config": lambda ctx: {
-            "repo_url": ctx["repo_url"],
-            "branch": ctx["branch"],
-            "target_dir": "/workspace/repo",
-            "depth": 1,
-        },
-    },
-    {
-        "sequence": 1,
-        "job_type": JobType.LIST_FILES,
-        "get_config": lambda ctx: {"target_dir": "/workspace/repo"},
-    },
-    {
-        "sequence": 2,
-        "job_type": JobType.CLONE_REPO,
-        "get_config": lambda ctx: {
-            "repo_url": "https://github.com/PrimeIntellect-ai/prime-rl.git",
-            "branch": "main",
-            "target_dir": "/workspace/prime-rl",
-            "depth": 1,
-        },
-    },
-    {
-        "sequence": 3,
         "job_type": JobType.CUSTOM_COMMAND,
         "get_config": lambda ctx: {
-            "command": "(curl -LsSf https://astral.sh/uv/install.sh | sh || true) && echo 'source $HOME/.local/bin/env' >> ~/.bashrc",
-            "working_dir": "/workspace/prime-rl",
+            "command": f"""#!/bin/bash
+set -e
+
+echo "=== Cloning user repository ==="
+git clone --depth 1 --branch {ctx['branch']} {ctx['repo_url']} /workspace/repo
+echo "User repo cloned successfully"
+
+echo "=== Listing repository files ==="
+ls -la /workspace/repo
+
+echo "=== Cloning prime-rl framework ==="
+git clone --depth 1 --branch main https://github.com/PrimeIntellect-ai/prime-rl.git /workspace/prime-rl
+echo "Prime-rl cloned successfully"
+
+echo "=== Installing uv package manager ==="
+cd /workspace/prime-rl
+(curl -LsSf https://astral.sh/uv/install.sh | sh || true) && echo 'source $HOME/.local/bin/env' >> ~/.bashrc
+source $HOME/.local/bin/env
+
+echo "=== Installing prime-rl dependencies ==="
+uv sync --all-extras
+
+echo "=== Installing user's verifier environment ==="
+uv pip install -e /workspace/repo
+
+echo "=== Verifying installation ==="
+uv run python -c "import prime_rl; print('prime_rl imported successfully')"
+
+echo "=== Reading rlx.toml configuration ==="
+cat /workspace/repo/rlx.toml
+
+echo "=== Setup completed successfully ==="
+""",
+            "working_dir": "/workspace",
             "timeout_seconds": None,
-        },
-    },
-    {
-        "sequence": 4,
-        "job_type": JobType.CUSTOM_COMMAND,
-        "get_config": lambda ctx: {
-            "command": "source $HOME/.local/bin/env && uv sync --all-extras",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
-    },
-    {
-        "sequence": 5,
-        "job_type": JobType.CUSTOM_COMMAND,
-        "get_config": lambda ctx: {
-            "command": "source $HOME/.local/bin/env && uv pip install -e /workspace/repo",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
-    },
-    {
-        "sequence": 6,
-        "job_type": JobType.CUSTOM_COMMAND,
-        "get_config": lambda ctx: {
-            "command": "source $HOME/.local/bin/env && uv run python -c \"import prime_rl; print('prime_rl imported successfully')\"",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": 60,
-        },
-    },
-    {
-        "sequence": 7,
-        "job_type": JobType.CUSTOM_COMMAND,
-        "get_config": lambda ctx: {
-            "command": "cat /workspace/repo/rlx.toml",
-            "working_dir": "/workspace/repo",
-            "timeout_seconds": 30,
         },
     },
 ]
