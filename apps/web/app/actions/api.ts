@@ -19,6 +19,7 @@ import type {
   RunStatusBatchResponse,
   SSHKeyStatus,
   SSHKeyResponse,
+  WandbKeyStatus,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
@@ -1084,6 +1085,69 @@ export async function syncRunJobs(runId: number): Promise<{
     added_count: result.data?.added_count,
     message: result.data?.message,
   };
+}
+
+// =============================================================================
+// W&B API Key Actions
+// =============================================================================
+
+export async function getWandbKeyStatus(): Promise<{
+  success: boolean;
+  data?: WandbKeyStatus;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(`${API_BASE_URL}/api/wandb-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as WandbKeyStatus;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function setWandbApiKey(apiKey: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const trimmedKey = apiKey.trim();
+  if (!trimmedKey) {
+    return { success: false, error: "API key is required" };
+  }
+
+  const result = await authenticatedRequest(async (token) => {
+    await axios.post(
+      `${API_BASE_URL}/api/wandb-key`,
+      { api_key: trimmedKey },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return null;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true };
+}
+
+export async function deleteWandbApiKey(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    await axios.delete(`${API_BASE_URL}/api/wandb-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return null;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true };
 }
 
 // =============================================================================

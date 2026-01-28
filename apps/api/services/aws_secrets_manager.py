@@ -46,14 +46,46 @@ def create_private_key_secret(
     """Create a secret in AWS Secrets Manager. Secret name must be unique."""
     client = _get_client()
     name = secret_name or f"rlx/user-ssh-key/{clerk_user_id}"
-    
+
     try:
         logger.info(f"Creating secret {name}")
         response = client.create_secret(Name=name, SecretString=private_key)
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code")
         error_message = exc.response.get("Error", {}).get("Message", str(exc))
-        logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
+        logger.error(
+            f"AWS Secrets Manager error: code={error_code}, message={error_message}"
+        )
+        raise SecretsManagerError(error_message)
+    except BotoCoreError as exc:
+        logger.error(f"AWS BotoCore error: {exc}")
+        raise SecretsManagerError(str(exc))
+
+    arn = response.get("ARN")
+    if not arn:
+        raise SecretsManagerError("AWS Secrets Manager did not return ARN")
+    logger.info(f"Successfully created secret {name} with ARN {arn}")
+    return arn
+
+
+def wandb_secret_name(clerk_user_id: str) -> str:
+    return f"rlx/wandb-api-key/{clerk_user_id}"
+
+
+def create_wandb_api_key_secret(*, clerk_user_id: str, api_key: str) -> str:
+    """Create a W&B API key secret in AWS Secrets Manager."""
+    client = _get_client()
+    name = wandb_secret_name(clerk_user_id)
+
+    try:
+        logger.info(f"Creating secret {name}")
+        response = client.create_secret(Name=name, SecretString=api_key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        error_message = exc.response.get("Error", {}).get("Message", str(exc))
+        logger.error(
+            f"AWS Secrets Manager error: code={error_code}, message={error_message}"
+        )
         raise SecretsManagerError(error_message)
     except BotoCoreError as exc:
         logger.error(f"AWS BotoCore error: {exc}")
@@ -69,13 +101,13 @@ def create_private_key_secret(
 def get_private_key_secret(secret_arn: str) -> str:
     """
     Retrieve a private key from AWS Secrets Manager.
-    
+
     Args:
         secret_arn: The ARN of the secret to retrieve
-        
+
     Returns:
         The private key string
-        
+
     Raises:
         SecretsManagerError: If the secret cannot be retrieved
     """
@@ -90,7 +122,9 @@ def get_private_key_secret(secret_arn: str) -> str:
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code")
         error_message = exc.response.get("Error", {}).get("Message", str(exc))
-        logger.error(f"AWS Secrets Manager error: code={error_code}, message={error_message}")
+        logger.error(
+            f"AWS Secrets Manager error: code={error_code}, message={error_message}"
+        )
         raise SecretsManagerError(error_message)
     except BotoCoreError as exc:
         logger.error(f"AWS BotoCore error: {exc}")

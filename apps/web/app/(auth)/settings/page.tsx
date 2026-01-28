@@ -1,5 +1,6 @@
 import { GitHubSettings } from "@/components/github-settings";
 import { SSHKeySettings } from "@/components/ssh-key-settings";
+import { WandbSettings } from "@/components/wandb-settings";
 
 export default function SettingsPage() {
   return (
@@ -34,6 +35,19 @@ export default function SettingsPage() {
           </div>
 
           <SSHKeySettings />
+        </div>
+      </div>
+
+      <div className="border-t pt-6">
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg md:text-xl font-semibold">Weights & Biases</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add your W&B API key for experiment tracking
+            </p>
+          </div>
+
+          <WandbSettings />
         </div>
       </div>
     </div>

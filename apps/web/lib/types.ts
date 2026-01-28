@@ -175,6 +175,12 @@ export interface RunTerminateResponse {
   pod_id: string;
 }
 
+// W&B API Key Types
+export interface WandbKeyStatus {
+  configured: boolean;
+  aws_region?: string | null;
+}
+
 // SSH Key Types
 export interface SSHKeyStatus {
   configured: boolean;
