@@ -15,7 +15,9 @@ import {
   Terminal,
   RotateCcw,
   RefreshCw,
+  Play,
 } from "lucide-react";
+import { TrainingLogsPanel } from "./training-logs-panel";
 import {
   getRunJobs,
   getJobDetails,
@@ -67,6 +69,9 @@ function getJobTitle(job: JobResponse): string {
       }
       return "Run Command";
     }
+    case "START_PRIME_RL": {
+      return "Start Prime-RL Training";
+    }
     default:
       return job.job_type;
   }
@@ -76,6 +81,7 @@ const jobTypeIcons: Record<JobType, React.ReactNode> = {
   CLONE_REPO: <FolderGit2 className="h-4 w-4" />,
   LIST_FILES: <FolderOpen className="h-4 w-4" />,
   CUSTOM_COMMAND: <Terminal className="h-4 w-4" />,
+  START_PRIME_RL: <Play className="h-4 w-4" />,
 };
 
 const statusConfig: Record<
@@ -255,6 +261,11 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                 {job.error_message}
               </pre>
             </div>
+          )}
+
+          {/* Training logs for START_PRIME_RL jobs */}
+          {job.job_type === "START_PRIME_RL" && (
+            <TrainingLogsPanel jobId={job.id} jobStatus={job.status} />
           )}
 
           {/* Command output from job details */}

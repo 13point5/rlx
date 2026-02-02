@@ -29,6 +29,7 @@ def make_celery() -> Celery:
         include=[
             "celery_app.tasks.pod_tasks",
             "celery_app.tasks.repo_tasks",
+            "celery_app.tasks.log_tasks",
         ],
     )
 
@@ -62,6 +63,7 @@ def make_celery() -> Celery:
         task_routes={
             "celery_app.tasks.pod_tasks.*": {"queue": "pod_ops"},
             "celery_app.tasks.repo_tasks.*": {"queue": "repo_ops"},
+            "celery_app.tasks.log_tasks.*": {"queue": "log_ops"},
         },
         # Beat schedule (periodic tasks)
         beat_schedule={

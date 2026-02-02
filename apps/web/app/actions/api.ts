@@ -10,6 +10,7 @@ import type {
   GpuInstance,
   JobResponse,
   JobDetailResponse,
+  JobLogsResponse,
   Project,
   RlxConfigResponse,
   RunInstanceSelection,
@@ -1085,6 +1086,53 @@ export async function syncRunJobs(runId: number): Promise<{
     added_count: result.data?.added_count,
     message: result.data?.message,
   };
+}
+
+export async function getJobLogs(
+  jobId: number,
+  options?: { logType?: string; afterId?: number; limit?: number }
+): Promise<{
+  success: boolean;
+  data?: JobLogsResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const params: Record<string, string | number> = {};
+    if (options?.logType) params.log_type = options.logType;
+    if (options?.afterId) params.after_id = options.afterId;
+    if (options?.limit) params.limit = options.limit;
+
+    const response = await axios.get(`${API_BASE_URL}/api/jobs/${jobId}/logs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params,
+    });
+    return response.data as JobLogsResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function refreshJobLogs(jobId: number): Promise<{
+  success: boolean;
+  taskId?: string;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.post(
+      `${API_BASE_URL}/api/jobs/${jobId}/logs/refresh`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data as { message: string; task_id: string };
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, taskId: result.data?.task_id };
 }
 
 // =============================================================================

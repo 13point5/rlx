@@ -1,13 +1,16 @@
 """Jobs API router."""
 
+import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Job, JobCommand, JobStatus, JobType, Run
+from database import Job, JobCommand, JobLog, JobLogOffset, JobStatus, JobType, LogType, Run
 from deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -88,6 +91,27 @@ class JobResultResponse(BaseModel):
     job_type: str
     status: str
     result: dict[str, Any] | None
+
+
+class JobLogEntryResponse(BaseModel):
+    """Single log entry response."""
+
+    id: int
+    log_type: str
+    content: str
+    byte_offset: int
+    captured_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class JobLogsResponse(BaseModel):
+    """Job logs response with all log types."""
+
+    job_id: int
+    logs: list[JobLogEntryResponse]
+    offsets: dict[str, int]  # Current offset per log type
 
 
 # Helper Functions
@@ -366,3 +390,234 @@ async def retry_job(job_id: int, user: CurrentUser, db: DbSession):
     await db.refresh(job)
 
     return job_to_response(job)
+
+
+@router.get("/{job_id}/logs", response_model=JobLogsResponse)
+async def get_job_logs(
+    job_id: int,
+    user: CurrentUser,
+    db: DbSession,
+    log_type: str | None = None,
+    after_id: int | None = None,
+    limit: int = 100,
+):
+    """
+    Get logs for a job.
+
+    Args:
+        job_id: The job ID
+        log_type: Optional filter by log type (trainer, orchestrator, inference, rl)
+        after_id: Optional ID to fetch logs after (for pagination/streaming)
+        limit: Maximum number of log entries to return (default 100)
+    """
+    clerk_user_id = user.get("sub")
+
+    # Verify job exists and belongs to user
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.clerk_user_id == clerk_user_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # Validate log type if provided
+    if log_type is not None:
+        valid_types = [e.value for e in LogType]
+        if log_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid log type. Must be one of: {valid_types}",
+            )
+
+    # Build query for logs
+    query = select(JobLog).where(JobLog.job_id == job_id)
+
+    if log_type is not None:
+        query = query.where(JobLog.log_type == log_type)
+
+    if after_id is not None:
+        query = query.where(JobLog.id > after_id)
+
+    query = query.order_by(JobLog.id).limit(limit)
+
+    log_result = await db.execute(query)
+    logs = list(log_result.scalars().all())
+
+    # Get current offsets
+    offset_result = await db.execute(
+        select(JobLogOffset).where(JobLogOffset.job_id == job_id)
+    )
+    offset_records = list(offset_result.scalars().all())
+    offsets = {record.log_type: record.byte_offset for record in offset_records}
+
+    return JobLogsResponse(
+        job_id=job_id,
+        logs=[
+            JobLogEntryResponse(
+                id=log.id,
+                log_type=log.log_type,
+                content=log.content,
+                byte_offset=log.byte_offset,
+                captured_at=log.captured_at,
+            )
+            for log in logs
+        ],
+        offsets=offsets,
+    )
+
+
+@router.post("/{job_id}/logs/refresh")
+async def refresh_job_logs(job_id: int, user: CurrentUser, db: DbSession):
+    """
+    Trigger a manual log refresh for a job.
+    Useful when logs haven't been streaming automatically.
+    """
+    clerk_user_id = user.get("sub")
+
+    # Verify job exists and belongs to user
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.clerk_user_id == clerk_user_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # Trigger log fetch task
+    from celery_app.tasks.log_tasks import fetch_logs_once
+
+    task = fetch_logs_once.delay(job_id)
+
+    return {"message": "Log refresh triggered", "task_id": task.id}
+
+
+@router.get("/{job_id}/logs/stream")
+async def stream_job_logs_sse(
+    job_id: int,
+    user: CurrentUser,
+    db: DbSession,
+    log_type: str | None = None,
+    after_id: int = 0,
+):
+    """
+    Stream logs for a job using Server-Sent Events (SSE).
+
+    The client should connect to this endpoint and receive log entries as they become available.
+    Each event contains a JSON payload with the log entry data.
+
+    Args:
+        job_id: The job ID
+        log_type: Optional filter by log type (trainer, orchestrator, inference, rl)
+        after_id: Start streaming from logs after this ID (default 0 = from beginning)
+    """
+    clerk_user_id = user.get("sub")
+
+    # Verify job exists and belongs to user
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.clerk_user_id == clerk_user_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # Validate log type if provided
+    if log_type is not None:
+        valid_types = [e.value for e in LogType]
+        if log_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid log type. Must be one of: {valid_types}",
+            )
+
+    async def event_generator():
+        """Generate SSE events for log entries."""
+        last_id = after_id
+        consecutive_empty = 0
+        max_empty_polls = 60  # Stop after 60 empty polls (5 minutes at 5s interval)
+
+        while True:
+            # Check if job is still running
+            result = await db.execute(select(Job.status).where(Job.id == job_id))
+            current_status = result.scalar_one_or_none()
+
+            # Build query for new logs
+            query = select(JobLog).where(JobLog.job_id == job_id, JobLog.id > last_id)
+
+            if log_type is not None:
+                query = query.where(JobLog.log_type == log_type)
+
+            query = query.order_by(JobLog.id).limit(50)
+
+            log_result = await db.execute(query)
+            logs = list(log_result.scalars().all())
+
+            if logs:
+                consecutive_empty = 0
+                for log in logs:
+                    event_data = {
+                        "id": log.id,
+                        "log_type": log.log_type,
+                        "content": log.content,
+                        "byte_offset": log.byte_offset,
+                        "captured_at": log.captured_at.isoformat() if log.captured_at else None,
+                    }
+                    yield f"id: {log.id}\ndata: {json.dumps(event_data)}\n\n"
+                    last_id = log.id
+            else:
+                consecutive_empty += 1
+
+            # Send heartbeat to keep connection alive
+            yield f": heartbeat {datetime.now(timezone.utc).isoformat()}\n\n"
+
+            # Stop conditions
+            if current_status and current_status not in [JobStatus.RUNNING, JobStatus.QUEUED]:
+                # Job finished - do one more poll then stop
+                await asyncio.sleep(2)
+                # Final poll
+                log_result = await db.execute(
+                    select(JobLog)
+                    .where(JobLog.job_id == job_id, JobLog.id > last_id)
+                    .order_by(JobLog.id)
+                )
+                final_logs = list(log_result.scalars().all())
+                for log in final_logs:
+                    event_data = {
+                        "id": log.id,
+                        "log_type": log.log_type,
+                        "content": log.content,
+                        "byte_offset": log.byte_offset,
+                        "captured_at": log.captured_at.isoformat() if log.captured_at else None,
+                    }
+                    yield f"id: {log.id}\ndata: {json.dumps(event_data)}\n\n"
+
+                # Send done event
+                yield f"event: done\ndata: {json.dumps({'status': current_status})}\n\n"
+                break
+
+            if consecutive_empty >= max_empty_polls:
+                # Too many empty polls - likely no more logs coming
+                yield f"event: timeout\ndata: {json.dumps({'message': 'No new logs for 5 minutes'})}\n\n"
+                break
+
+            await asyncio.sleep(5)  # Poll every 5 seconds
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )

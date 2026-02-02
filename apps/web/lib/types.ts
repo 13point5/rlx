@@ -205,7 +205,13 @@ export type JobStatus =
   | "TIMEOUT"
   | "CANCELLED";
 
-export type JobType = "CLONE_REPO" | "LIST_FILES" | "CUSTOM_COMMAND";
+export type JobType =
+  | "CLONE_REPO"
+  | "LIST_FILES"
+  | "CUSTOM_COMMAND"
+  | "START_PRIME_RL";
+
+export type LogType = "trainer" | "orchestrator" | "inference" | "rl";
 
 export interface JobCommand {
   id: number;
@@ -245,4 +251,19 @@ export interface JobResultResponse {
   job_type: JobType;
   status: JobStatus;
   result: Record<string, unknown> | null;
+}
+
+// Job Log Types
+export interface JobLogEntry {
+  id: number;
+  log_type: LogType;
+  content: string;
+  byte_offset: number;
+  captured_at: string;
+}
+
+export interface JobLogsResponse {
+  job_id: number;
+  logs: JobLogEntry[];
+  offsets: Record<LogType, number>;
 }

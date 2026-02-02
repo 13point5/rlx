@@ -62,6 +62,15 @@ class CommandStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class LogType(StrEnum):
+    """Types of logs from prime-RL training."""
+
+    TRAINER = "trainer"  # trainer.stdout
+    ORCHESTRATOR = "orchestrator"  # orchestrator.stdout
+    INFERENCE = "inference"  # inference.stdout
+    RL = "rl"  # rl.log (main process)
+
+
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -251,6 +260,56 @@ class JobCommand(Base):
 
     # Sequence within job
     sequence = Column(Integer, nullable=False, default=0)
+
+
+class JobLog(Base):
+    """
+    Stores log chunks from prime-RL training runs.
+    Logs are streamed from the pod and stored for persistence across page refreshes.
+    """
+
+    __tablename__ = "job_logs"
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False, index=True)
+
+    # Log type (trainer, orchestrator, inference, rl)
+    log_type = Column(String, nullable=False, index=True)
+
+    # Log content - stored as chunks for efficient streaming
+    content = Column(Text, nullable=False)
+
+    # Byte offset in the original file (for resuming streaming)
+    byte_offset = Column(Integer, nullable=False, default=0)
+
+    # Timestamp when this log chunk was captured
+    captured_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class JobLogOffset(Base):
+    """
+    Tracks the current read offset for each log file per job.
+    Used to resume log streaming from where we left off.
+    """
+
+    __tablename__ = "job_log_offsets"
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    log_type = Column(String, nullable=False)
+
+    # Current byte offset in the log file
+    byte_offset = Column(Integer, nullable=False, default=0)
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Unique constraint: one offset per job per log type
+    __table_args__ = (UniqueConstraint("job_id", "log_type", name="unique_job_log_type"),)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

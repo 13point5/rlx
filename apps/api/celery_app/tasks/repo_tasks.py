@@ -516,6 +516,13 @@ def start_prime_rl(self, job_id: int):
         job.started_at = datetime.now(timezone.utc)
         session.commit()
 
+        # Start log streaming task in background
+        from celery_app.tasks.log_tasks import stream_job_logs
+
+        output_dir = "/workspace/prime-rl/output"
+        stream_job_logs.delay(job_id, output_dir)
+        logger.info(f"Started log streaming task for job {job_id}")
+
         try:
             config = job.job_config
             working_dir = config.get("working_dir", "/workspace/prime-rl")
