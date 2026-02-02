@@ -178,7 +178,6 @@ export interface RunTerminateResponse {
 // W&B API Key Types
 export interface WandbKeyStatus {
   configured: boolean;
-  aws_region?: string | null;
 }
 
 // SSH Key Types

@@ -21,7 +21,6 @@ class WandbApiKeyRequest(BaseModel):
 
 class WandbKeyStatusResponse(BaseModel):
     configured: bool
-    aws_region: str | None = None
 
 
 class WandbKeyCreateResponse(BaseModel):
@@ -36,11 +35,9 @@ async def get_wandb_key_status(user: CurrentUser) -> WandbKeyStatusResponse:
         secret_arn = get_secret_arn_by_name(secret_name)
     except SecretsManagerError as exc:
         raise HTTPException(status_code=500, detail=exc.message)
-    aws_region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
 
     return WandbKeyStatusResponse(
         configured=secret_arn is not None,
-        aws_region=aws_region,
     )
 
 

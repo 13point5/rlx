@@ -1111,6 +1111,7 @@ export async function getWandbKeyStatus(): Promise<{
 
 export async function setWandbApiKey(apiKey: string): Promise<{
   success: boolean;
+  data?: WandbKeyStatus;
   error?: string;
 }> {
   const trimmedKey = apiKey.trim();
@@ -1130,11 +1131,12 @@ export async function setWandbApiKey(apiKey: string): Promise<{
   if (!result.success) {
     return { success: false, error: result.error };
   }
-  return { success: true };
+  return { success: true, data: { configured: true } };
 }
 
 export async function deleteWandbApiKey(): Promise<{
   success: boolean;
+  data?: WandbKeyStatus;
   error?: string;
 }> {
   const result = await authenticatedRequest(async (token) => {
@@ -1147,7 +1149,7 @@ export async function deleteWandbApiKey(): Promise<{
   if (!result.success) {
     return { success: false, error: result.error };
   }
-  return { success: true };
+  return { success: true, data: { configured: false } };
 }
 
 // =============================================================================

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteWandbApiKey,
   getWandbKeyStatus,
@@ -19,76 +20,87 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, Key, Trash2 } from "lucide-react";
+import type { WandbKeyStatus } from "@/lib/types";
 
 export function WandbSettings() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [configured, setConfigured] = useState(false);
-  const [awsRegion, setAwsRegion] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const loadStatus = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const {
+    data: status,
+    isLoading,
+    error: statusError,
+    refetch,
+  } = useQuery({
+    queryKey: ["wandb-key-status"],
+    queryFn: async () => {
+      const result = await getWandbKeyStatus();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to load W&B status");
+      }
+      if (result.data) {
+        return result.data;
+      }
+      return { configured: false };
+    },
+  });
 
-    const result = await getWandbKeyStatus();
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const trimmed = apiKey.trim();
+      if (!trimmed) {
+        throw new Error("API key is required");
+      }
+      const result = await setWandbApiKey(trimmed);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to save API key");
+      }
+      return result.data ?? { configured: true };
+    },
+    onSuccess: (data) => {
+      setApiKey("");
+      setValidationError(null);
+      queryClient.setQueryData<WandbKeyStatus | undefined>(
+        ["wandb-key-status"],
+        (current) => {
+          if (current) {
+            return { configured: data.configured };
+          }
+          if (status) {
+            return { configured: data.configured };
+          }
+          return { configured: data.configured };
+        }
+      );
+    },
+  });
 
-    if (!result.success) {
-      setIsLoading(false);
-      setError(result.error || "Failed to load W&B status");
-      return;
-    }
-
-    setConfigured(result.data?.configured ?? false);
-    setAwsRegion(result.data?.aws_region ?? null);
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
-
-  const handleSave = useCallback(async () => {
-    if (!apiKey.trim()) {
-      setError("API key is required");
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    const result = await setWandbApiKey(apiKey);
-
-    setIsSaving(false);
-
-    if (!result.success) {
-      setError(result.error || "Failed to save API key");
-      return;
-    }
-
-    setApiKey("");
-    await loadStatus();
-  }, [apiKey, loadStatus]);
-
-  const handleDelete = useCallback(async () => {
-    setIsDeleting(true);
-    setError(null);
-
-    const result = await deleteWandbApiKey();
-
-    setIsDeleting(false);
-    setDeleteDialogOpen(false);
-
-    if (!result.success) {
-      setError(result.error || "Failed to delete API key");
-      return;
-    }
-
-    await loadStatus();
-  }, [loadStatus]);
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const result = await deleteWandbApiKey();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to delete API key");
+      }
+      return result.data ?? { configured: false };
+    },
+    onSuccess: (data) => {
+      setDeleteDialogOpen(false);
+      queryClient.setQueryData<WandbKeyStatus | undefined>(
+        ["wandb-key-status"],
+        (current) => {
+          if (current) {
+            return { configured: data.configured };
+          }
+          if (status) {
+            return { configured: data.configured };
+          }
+          return { configured: data.configured };
+        }
+      );
+    },
+  });
 
   if (isLoading) {
     return (
@@ -104,6 +116,51 @@ export function WandbSettings() {
     );
   }
 
+  if (!status) {
+    return (
+      <Card data-slot="wandb-settings">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="size-5" />
+            Weights & Biases
+          </CardTitle>
+          <CardDescription>
+            Store your W&B API key in AWS Secrets Manager for experiment logging.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Unable to load W&B status right now.
+          </p>
+          {statusError && (
+            <p className="text-sm text-destructive flex items-center gap-2">
+              <AlertCircle className="size-4" />
+              {(statusError as Error).message}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const configured = status.configured;
+
+  let errorMessage: string | null = null;
+  if (validationError) {
+    errorMessage = validationError;
+  } else if (saveMutation.error) {
+    errorMessage = saveMutation.error.message;
+  } else if (deleteMutation.error) {
+    errorMessage = deleteMutation.error.message;
+  } else if (statusError) {
+    errorMessage = (statusError as Error).message;
+  }
+
   return (
     <Card data-slot="wandb-settings">
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -116,70 +173,81 @@ export function WandbSettings() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteMutation.isPending}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? "Deleting..." : "Delete"}
+            <Button
+              variant="destructive"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Key className="size-5" />
-          Weights & Biases
-        </CardTitle>
-        <CardDescription>
-          Store your W&B API key in AWS Secrets Manager for experiment logging.
-        </CardDescription>
-      </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p>
-            Status:{" "}
-            <span className={configured ? "text-foreground font-medium" : "text-muted-foreground"}>
-              {configured ? "Configured" : "Not configured"}
-            </span>
-          </p>
-          {awsRegion && <p className="text-xs text-muted-foreground">AWS region: {awsRegion}</p>}
-        </div>
 
         <div className="space-y-2">
           <Label htmlFor="wandb-api-key">W&B API Key</Label>
-          <Input
-            id="wandb-api-key"
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder={configured ? "Stored in AWS Secrets Manager" : "Paste your W&B API key"}
-            disabled={configured || isSaving || isDeleting}
-          />
-          {configured && (
-            <p className="text-xs text-muted-foreground">Delete the key to set a new one.</p>
+          {!configured && (
+            <Input
+              id="wandb-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setValidationError(null);
+              }}
+              placeholder="Paste your W&B API key"
+              disabled={saveMutation.isPending || deleteMutation.isPending}
+            />
           )}
         </div>
 
-        {error && (
+        {errorMessage && (
           <p className="text-sm text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" />
-            {error}
+            {errorMessage}
           </p>
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleSave} disabled={configured || isSaving || !apiKey.trim()}>
-            {isSaving ? "Saving..." : "Save Key"}
-          </Button>
+          {!configured && (
+            <Button
+              onClick={() => {
+                if (!apiKey.trim()) {
+                  setValidationError("API key is required");
+                  return;
+                }
+                saveMutation.mutate();
+              }}
+              disabled={saveMutation.isPending || !apiKey.trim()}
+            >
+              {saveMutation.isPending ? "Saving..." : "Save Key"}
+            </Button>
+          )}
           {configured && (
-            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)} disabled={isDeleting}>
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={deleteMutation.isPending}
+            >
               <Trash2 className="size-4 mr-1" />
               Delete Key
             </Button>
           )}
-          {error && (
-            <Button variant="outline" onClick={loadStatus} disabled={isSaving || isDeleting}>
+          {errorMessage && (
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={saveMutation.isPending || deleteMutation.isPending}
+            >
               Retry
             </Button>
           )}
