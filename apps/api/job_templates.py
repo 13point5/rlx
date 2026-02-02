@@ -76,7 +76,43 @@ JOB_TEMPLATES = [
             "timeout_seconds": 30,
         },
     },
+    {
+        "sequence": 8,
+        "job_type": JobType.START_PRIME_RL,
+        "get_config": lambda ctx: _get_prime_rl_config(ctx),
+    },
 ]
+
+
+def _get_prime_rl_config(ctx: dict) -> dict:
+    """
+    Build prime-RL job config based on the config_name.
+
+    If config_name ends with '.toml', use single file mode.
+    Otherwise, treat it as a directory containing train.toml, orch.toml, infer.toml.
+
+    Config paths are relative to the user's repo at /workspace/repo.
+    """
+    config_name = ctx.get("config_name", "")
+    repo_path = "/workspace/repo"
+
+    if config_name.endswith(".toml"):
+        # Single file mode
+        return {
+            "config_path": f"{repo_path}/{config_name}",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": None,  # No timeout for long-running training
+        }
+    else:
+        # Three file mode - config_name is a directory
+        config_dir = config_name.rstrip("/")
+        return {
+            "trainer_config": f"{repo_path}/{config_dir}/train.toml",
+            "orchestrator_config": f"{repo_path}/{config_dir}/orch.toml",
+            "inference_config": f"{repo_path}/{config_dir}/infer.toml",
+            "working_dir": "/workspace/prime-rl",
+            "timeout_seconds": None,  # No timeout for long-running training
+        }
 
 
 def create_jobs_from_templates(

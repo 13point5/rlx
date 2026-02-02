@@ -471,3 +471,161 @@ def run_custom_command(self, job_id: int):
             job.completed_at = datetime.now(timezone.utc)
             session.commit()
             raise
+
+
+@celery_app.task(
+    bind=True,
+    base=DatabaseTask,
+    max_retries=1,
+    default_retry_delay=60,
+    name="celery_app.tasks.repo_tasks.start_prime_rl",
+)
+def start_prime_rl(self, job_id: int):
+    """
+    Start a prime-RL training run.
+
+    Supports two configuration modes:
+    1. Single toml file: uv run rl @ config.toml
+    2. Three separate files: uv run rl --trainer @ train.toml --orchestrator @ orch.toml --inference @ infer.toml
+
+    Job config:
+    {
+        # Single file mode (if config_path is provided)
+        "config_path": "/workspace/repo/configs/rl/config.toml",
+
+        # OR Three file mode (if trainer_config, orchestrator_config, inference_config are provided)
+        "trainer_config": "/workspace/repo/configs/rl/train.toml",
+        "orchestrator_config": "/workspace/repo/configs/rl/orch.toml",
+        "inference_config": "/workspace/repo/configs/rl/infer.toml",
+
+        "working_dir": "/workspace/prime-rl",  # Optional, defaults to /workspace/prime-rl
+        "timeout_seconds": None,  # Optional, defaults to no timeout (long-running)
+        "env": {"WANDB_API_KEY": "..."}  # Optional environment variables
+    }
+    """
+    from database import Job, JobStatus
+
+    logger.info(f"Starting prime-RL task for job {job_id}")
+
+    with self.get_db_session() as session:
+        job = session.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            return {"error": "Job not found", "job_id": job_id}
+
+        job.status = JobStatus.RUNNING
+        job.started_at = datetime.now(timezone.utc)
+        session.commit()
+
+        try:
+            config = job.job_config
+            working_dir = config.get("working_dir", "/workspace/prime-rl")
+            timeout = config.get("timeout_seconds")  # None = no timeout for long-running
+            env = config.get("env")
+
+            # Build the rl command based on config mode
+            config_path = config.get("config_path")
+            trainer_config = config.get("trainer_config")
+            orchestrator_config = config.get("orchestrator_config")
+            inference_config = config.get("inference_config")
+
+            if config_path:
+                # Single file mode
+                command = f"source $HOME/.local/bin/env && uv run rl @ {config_path}"
+            elif trainer_config and orchestrator_config and inference_config:
+                # Three file mode
+                command = (
+                    f"source $HOME/.local/bin/env && uv run rl "
+                    f"--trainer @ {trainer_config} "
+                    f"--orchestrator @ {orchestrator_config} "
+                    f"--inference @ {inference_config}"
+                )
+            else:
+                raise ValueError(
+                    "Job config must specify either 'config_path' for single file mode, "
+                    "or 'trainer_config', 'orchestrator_config', and 'inference_config' for three file mode"
+                )
+
+            # Get executor
+            executor = get_executor_for_run(session, job.run_id)
+            if not executor:
+                raise ValueError("Could not create SSH executor")
+
+            # Record command
+            cmd_id = self.record_command(job_id, command, working_dir, sequence=0)
+
+            # Run all async operations in a single event loop
+            async def execute_prime_rl():
+                try:
+                    logger.info(f"Executing prime-RL command: {command}")
+                    return await executor.execute(
+                        command,
+                        working_dir=working_dir,
+                        timeout_seconds=timeout,
+                        env=env,
+                    )
+                finally:
+                    await executor.close()
+
+            result = run_async(execute_prime_rl())
+
+            # Update command result
+            self.update_command_result(
+                cmd_id,
+                status=result.status.value,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
+            )
+
+            if result.success:
+                job.status = JobStatus.SUCCESS
+                job.completed_at = datetime.now(timezone.utc)
+
+                # Store result
+                job.job_config = {
+                    **config,
+                    "result": {
+                        "stdout": result.stdout,
+                        "stderr": result.stderr,
+                        "exit_code": result.exit_code,
+                    },
+                }
+                session.commit()
+
+                logger.info(f"Job {job_id} (prime-RL) completed successfully")
+
+                # Start next job in sequence (if any)
+                from celery_app.tasks.pod_tasks import start_next_job_for_run
+
+                start_next_job_for_run(job.run_id)
+
+                return {
+                    "job_id": job_id,
+                    "status": "success",
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout[:1000] if result.stdout else None,
+                }
+            else:
+                job.status = JobStatus.FAILED
+                job.error_message = result.error_message or result.stderr
+                job.error_type = result.error_type or "prime_rl_error"
+                job.completed_at = datetime.now(timezone.utc)
+                session.commit()
+
+                logger.error(f"Job {job_id} (prime-RL) failed: {result.error_message}")
+
+                return {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": result.error_message,
+                    "exit_code": result.exit_code,
+                }
+
+        except Exception as e:
+            logger.exception(f"Job {job_id} (prime-RL) failed: {e}")
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.completed_at = datetime.now(timezone.utc)
+            session.commit()
+            raise

@@ -48,6 +48,7 @@ class JobType(StrEnum):
     CLONE_REPO = "CLONE_REPO"
     LIST_FILES = "LIST_FILES"
     CUSTOM_COMMAND = "CUSTOM_COMMAND"
+    START_PRIME_RL = "START_PRIME_RL"
 
 
 class CommandStatus(StrEnum):

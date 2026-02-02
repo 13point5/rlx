@@ -38,6 +38,10 @@ def queue_job(job, session):
         from celery_app.tasks.repo_tasks import run_custom_command
 
         task = run_custom_command.delay(job.id)
+    elif job.job_type == "START_PRIME_RL":
+        from celery_app.tasks.repo_tasks import start_prime_rl
+
+        task = start_prime_rl.delay(job.id)
     else:
         logger.warning(f"Unknown job type: {job.job_type}")
         return False
