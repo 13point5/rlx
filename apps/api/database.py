@@ -8,7 +8,9 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -59,6 +61,13 @@ class CommandStatus(StrEnum):
     FAILED = "FAILED"
     TIMEOUT = "TIMEOUT"
     CANCELLED = "CANCELLED"
+
+
+class RunFinalizedStatus(StrEnum):
+    """Status of run finalization for metrics logging."""
+
+    ACTIVE = "ACTIVE"
+    FINALIZED = "FINALIZED"
 
 
 load_dotenv()
@@ -250,6 +259,124 @@ class JobCommand(Base):
 
     # Sequence within job
     sequence = Column(Integer, nullable=False, default=0)
+
+
+# ============================================================================
+# Prime-RL Metrics Logging Tables
+# ============================================================================
+
+
+class RunMetrics(Base):
+    """
+    Stores scalar metrics logged during training runs.
+    Compatible with PrimeMonitor's log() method.
+    Each row represents a set of metrics at a given step.
+    """
+
+    __tablename__ = "run_metrics"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False)
+    step = Column(Integer, nullable=True)  # Training step (optional)
+
+    # Store all metrics as JSON for flexibility
+    # e.g., {"reward/mean": 0.5, "loss/mean": 0.1, "perf/throughput": 1000}
+    metrics = Column(JSON, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_run_metrics_run_id", "run_id"),
+        Index("ix_run_metrics_run_step", "run_id", "step"),
+    )
+
+
+class RunSample(Base):
+    """
+    Stores sample/rollout data from training.
+    Compatible with PrimeMonitor's log_samples() method.
+    Stores complete trajectory data for each sample.
+    """
+
+    __tablename__ = "run_samples"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False)
+    step = Column(Integer, nullable=False)
+
+    # Sample identification
+    example_id = Column(String, nullable=True)
+
+    # Prompt and completion (stored as JSON arrays of messages)
+    prompt = Column(JSON, nullable=True)
+    completion = Column(JSON, nullable=True)
+
+    # Trajectory: array of {prompt, completion, reward, advantage, extras, ...}
+    trajectory = Column(JSON, nullable=True)
+
+    # Scalar values
+    reward = Column(Float, nullable=True)
+    advantage = Column(Float, nullable=True)
+
+    # Additional fields
+    answer = Column(Text, nullable=True)
+    task = Column(String, nullable=True)
+
+    # Metadata (stored as JSON)
+    info = Column(JSON, nullable=True)
+    sample_metrics = Column(JSON, nullable=True)
+    timing = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_run_samples_run_id", "run_id"),
+        Index("ix_run_samples_run_step", "run_id", "step"),
+    )
+
+
+class RunDistribution(Base):
+    """
+    Stores distribution data (rewards, advantages) at each step.
+    Compatible with PrimeMonitor's log_distributions() method.
+    """
+
+    __tablename__ = "run_distributions"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False)
+    step = Column(Integer, nullable=False)
+
+    # Distribution data: {"rewards": [...], "advantages": [...]}
+    distributions = Column(JSON, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_run_distributions_run_id", "run_id"),
+        Index("ix_run_distributions_run_step", "run_id", "step"),
+    )
+
+
+class RunSummary(Base):
+    """
+    Stores final run summary when training completes.
+    Compatible with PrimeMonitor's save_final_summary() method.
+    """
+
+    __tablename__ = "run_summaries"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False, unique=True)
+
+    # Final summary data
+    summary = Column(JSON, nullable=False)
+
+    # Finalization status
+    status = Column(String, nullable=False, default=RunFinalizedStatus.ACTIVE)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

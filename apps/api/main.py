@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import compute, github, health, jobs, projects, runs, ssh_keys, wandb
+from routers import compute, github, health, jobs, metrics, projects, runs, ssh_keys, wandb
 
 load_dotenv()
 
@@ -29,6 +29,7 @@ app.include_router(runs.router)
 app.include_router(ssh_keys.router)
 app.include_router(jobs.router)
 app.include_router(wandb.router)
+app.include_router(metrics.router)
 
 
 if __name__ == "__main__":

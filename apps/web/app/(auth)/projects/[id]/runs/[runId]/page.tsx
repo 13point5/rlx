@@ -1,5 +1,6 @@
 import { getRun } from "@/app/actions/api";
 import { ErrorState } from "@/components/error-state";
+import { MetricsChart, RolloutsPanel } from "@/components/metrics";
 import { PageHeading } from "@/components/page-heading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { JobsPanel } from "./jobs-panel";
@@ -46,6 +47,13 @@ export default async function RunPage({ params }: RunPageProps) {
         </Card>
         <RunStatusPanel runId={runIdNumber} initialStatus={run.status} />
       </div>
+
+      {/* Training Metrics Chart */}
+      <MetricsChart runId={runIdNumber} />
+
+      {/* Rollouts / Samples */}
+      <RolloutsPanel runId={runIdNumber} />
+
       <JobsPanel runId={runIdNumber} runStatus={run.status} />
     </div>
   );

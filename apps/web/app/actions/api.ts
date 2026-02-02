@@ -3,6 +3,8 @@
 import { auth } from "@clerk/nextjs/server";
 import axios, { AxiosError } from "axios";
 import type {
+  AvailableMetricsResponse,
+  DistributionsListResponse,
   GitHubOwner,
   GitHubRepo,
   GitHubBranchesResponse,
@@ -10,13 +12,17 @@ import type {
   GpuInstance,
   JobResponse,
   JobDetailResponse,
+  MetricsResponse,
+  MetricSeriesResponse,
   Project,
   RlxConfigResponse,
   RunInstanceSelection,
   RunRecord,
   RunStatusResponse,
+  RunSummaryResponse,
   RunTerminateResponse,
   RunStatusBatchResponse,
+  SamplesListResponse,
   SSHKeyStatus,
   SSHKeyResponse,
   WandbKeyStatus,
@@ -1294,4 +1300,166 @@ export async function deleteSSHKey(keyId: number): Promise<{
     return { success: false, error: result.error };
   }
   return { success: true };
+}
+
+// =============================================================================
+// Metrics Actions (Prime-RL Compatible)
+// =============================================================================
+
+export async function getRunMetrics(
+  runId: number,
+  options?: { limit?: number; offset?: number }
+): Promise<{
+  success: boolean;
+  data?: MetricsResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", options.limit.toString());
+    if (options?.offset) params.set("offset", options.offset.toString());
+
+    const url = `${API_BASE_URL}/api/rft/runs/${runId}/metrics${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as MetricsResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function getAvailableMetrics(runId: number): Promise<{
+  success: boolean;
+  data?: AvailableMetricsResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(
+      `${API_BASE_URL}/api/rft/runs/${runId}/metrics/available`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data as AvailableMetricsResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function getMetricSeries(
+  runId: number,
+  metricName: string,
+  options?: { limit?: number }
+): Promise<{
+  success: boolean;
+  data?: MetricSeriesResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", options.limit.toString());
+
+    const url = `${API_BASE_URL}/api/rft/runs/${runId}/metrics/${encodeURIComponent(metricName)}${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as MetricSeriesResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function getRunSamples(
+  runId: number,
+  options?: { step?: number; limit?: number; offset?: number }
+): Promise<{
+  success: boolean;
+  data?: SamplesListResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const params = new URLSearchParams();
+    if (options?.step !== undefined) params.set("step", options.step.toString());
+    if (options?.limit) params.set("limit", options.limit.toString());
+    if (options?.offset) params.set("offset", options.offset.toString());
+
+    const url = `${API_BASE_URL}/api/rft/runs/${runId}/samples${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as SamplesListResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function getRunDistributions(
+  runId: number,
+  options?: { limit?: number }
+): Promise<{
+  success: boolean;
+  data?: DistributionsListResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", options.limit.toString());
+
+    const url = `${API_BASE_URL}/api/rft/runs/${runId}/distributions${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data as DistributionsListResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
+}
+
+export async function getRunSummary(runId: number): Promise<{
+  success: boolean;
+  data?: RunSummaryResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(
+      `${API_BASE_URL}/api/rft/runs/${runId}/summary`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data as RunSummaryResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.data };
 }

@@ -149,6 +149,7 @@ uv run celery -A celery_app flower --port=5555
 | `projects.py` | Project CRUD operations                |
 | `runs.py`     | Training run management                |
 | `ssh_keys.py` | SSH key management                     |
+| `metrics.py`  | Prime-RL compatible metrics logging    |
 
 **Services** (`apps/api/services/`):
 
@@ -847,3 +848,63 @@ When creating new components:
 - [ ] Has proper TypeScript types
 - [ ] Is responsive (works on mobile and desktop)
 - [ ] Does not use setTimeout as a hack for timing/state issues
+
+---
+
+## Prime-RL Integration
+
+RLX provides a metrics logging API that is compatible with Prime-RL's `PrimeMonitor`. This allows training runs to log metrics, samples/rollouts, and distributions to RLX for visualization in the web app.
+
+### API Endpoints (PrimeMonitor Compatible)
+
+Base URL: `/api/rft`
+
+| Endpoint              | Method | Description                          |
+| --------------------- | ------ | ------------------------------------ |
+| `/metrics`            | POST   | Log scalar metrics (loss, reward)    |
+| `/samples`            | POST   | Log rollout/sample data              |
+| `/distributions`      | POST   | Log reward/advantage distributions   |
+| `/finalize`           | POST   | Mark run as complete with summary    |
+| `/runs/{id}/metrics`  | GET    | Query metrics for a run              |
+| `/runs/{id}/samples`  | GET    | Query samples for a run              |
+
+### Configuring Prime-RL to Use RLX
+
+To use RLX as the logging backend instead of Prime Intellect's API, configure your training run with:
+
+```toml
+# In your prime-rl config
+[orchestrator]
+prime_monitor = { base_url = "https://your-rlx-api.com/api/rft" }
+```
+
+Or set environment variables:
+
+```bash
+# Required: Your RLX API endpoint
+export PRIME_MONITOR_BASE_URL="https://your-rlx-api.com/api/rft"
+
+# Required: The run ID in RLX database (integer)
+export RUN_ID="123"
+
+# Optional: API key for authentication (if required)
+export PRIME_API_KEY="your-api-key"
+```
+
+### Database Tables
+
+The metrics logging uses these tables:
+
+- `run_metrics` - Scalar metrics (loss, reward, throughput, etc.)
+- `run_samples` - Sample/rollout data with trajectories
+- `run_distributions` - Reward and advantage distributions
+- `run_summaries` - Final run summary when training completes
+
+### Frontend Components
+
+Metrics are visualized using:
+
+- `MetricsChart` - Time series line chart for scalar metrics
+- `RolloutsPanel` - Interactive viewer for samples/trajectories
+
+These components are automatically shown on the run details page at `/projects/{id}/runs/{runId}`.

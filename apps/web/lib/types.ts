@@ -246,3 +246,88 @@ export interface JobResultResponse {
   status: JobStatus;
   result: Record<string, unknown> | null;
 }
+
+// ============================================================================
+// Metrics Types (Prime-RL Compatible)
+// ============================================================================
+
+export interface MetricsDataPoint {
+  id: number;
+  step: number | null;
+  metrics: Record<string, number | string | boolean | null>;
+  created_at: string;
+}
+
+export interface MetricsResponse {
+  run_id: number;
+  data: MetricsDataPoint[];
+}
+
+export interface MetricSeriesPoint {
+  step: number | null;
+  value: number;
+  timestamp: string;
+}
+
+export interface MetricSeriesResponse {
+  run_id: number;
+  metric_name: string;
+  data: MetricSeriesPoint[];
+}
+
+export interface AvailableMetricsResponse {
+  run_id: number;
+  metrics: string[];
+}
+
+export interface TrajectoryStep {
+  prompt: string;
+  completion: string;
+  reward: number | null;
+  advantage: number | null;
+  extras: Record<string, unknown> | null;
+  num_input_tokens: number | null;
+  num_output_tokens: number | null;
+}
+
+export interface SampleRecord {
+  id: number;
+  step: number;
+  example_id: string | null;
+  prompt: unknown;
+  completion: unknown;
+  trajectory: TrajectoryStep[] | null;
+  reward: number | null;
+  advantage: number | null;
+  answer: string | null;
+  task: string | null;
+  info: Record<string, unknown> | null;
+  metrics: Record<string, unknown> | null;
+  timing: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface SamplesListResponse {
+  run_id: number;
+  total: number;
+  samples: SampleRecord[];
+}
+
+export interface DistributionRecord {
+  step: number;
+  distributions: Record<string, number[]>;
+  created_at: string;
+}
+
+export interface DistributionsListResponse {
+  run_id: number;
+  data: DistributionRecord[];
+}
+
+export interface RunSummaryResponse {
+  run_id: number;
+  summary: Record<string, unknown> | null;
+  status: string;
+  created_at?: string;
+  finalized_at?: string | null;
+}
