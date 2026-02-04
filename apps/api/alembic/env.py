@@ -19,7 +19,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import your models' Base for autogenerate support
-from database import Base
+from rlx_api.database import Base
 
 target_metadata = Base.metadata
 

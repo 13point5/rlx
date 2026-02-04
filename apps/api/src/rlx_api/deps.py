@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import GitHubConnection, get_db
+from rlx_api.database import GitHubConnection, get_db
 from sqlalchemy import select
 
 load_dotenv()
@@ -80,7 +80,7 @@ async def get_valid_github_token(connection: GitHubConnection, db: AsyncSession)
     If the token is expired and cannot be refreshed, the connection is deleted.
     """
     # Import here to avoid circular imports
-    from services import github as github_service
+    from rlx_api.services import github as github_service
 
     access_token = await github_service.get_valid_token(connection, db)
 

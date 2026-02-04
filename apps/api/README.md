@@ -13,7 +13,7 @@ uv sync
 ## Running the Server
 
 ```bash
-uv run uvicorn main:app --reload --port 8000
+uv run uvicorn rlx_api.main:app --reload --port 8000
 ```
 
 ## Job Queue (Celery + Redis)
@@ -44,10 +44,10 @@ uv run alembic upgrade head
 
 ### 3. Start Celery Worker
 
-In a separate terminal. **Note:** `PYTHONPATH=.` is required so workers can import `database`, `services`, etc.:
+In a separate terminal. No `PYTHONPATH` override is needed now that the API is a proper package:
 
 ```bash
-PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
+uv run celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops
 ```
 
 ### 4. Start Celery Beat (Scheduler)
@@ -55,7 +55,7 @@ PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_
 In another terminal (optional, for periodic job checking):
 
 ```bash
-PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
+uv run celery -A rlx_api.celery_app:celery_app beat --loglevel=info
 ```
 
 ### Monitoring with Flower (Optional)
@@ -64,7 +64,7 @@ For a web UI to monitor tasks:
 
 ```bash
 uv add flower
-uv run celery -A celery_app flower --port=5555
+uv run celery -A rlx_api.celery_app:celery_app flower --port=5555
 ```
 
 Then open http://localhost:5555

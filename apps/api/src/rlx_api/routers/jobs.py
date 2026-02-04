@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Job, JobCommand, JobStatus, JobType, Run
-from deps import CurrentUser, DbSession
+from rlx_api.database import Job, JobCommand, JobStatus, JobType, Run
+from rlx_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -282,7 +282,7 @@ async def cancel_job(job_id: int, user: CurrentUser, db: DbSession):
     # Revoke Celery task if queued
     if job.celery_task_id:
         try:
-            from celery_app import celery_app
+            from rlx_api.celery_app import celery_app
 
             celery_app.control.revoke(job.celery_task_id, terminate=True)
         except Exception as e:

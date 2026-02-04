@@ -1,6 +1,6 @@
 """Job template definitions for runs."""
 
-from database import Job, JobStatus, JobType
+from rlx_api.database import Job, JobStatus, JobType
 
 
 # Job template definitions - reused in create_run and sync_jobs

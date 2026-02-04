@@ -18,7 +18,7 @@ tmux send-keys -t "$SESSION:web" "pnpm dev" Enter
 
 # Window 2: api
 tmux new-window -t "$SESSION" -n api -c "$SCRIPT_DIR/apps/api"
-tmux send-keys -t "$SESSION:api" "uv run uvicorn main:app --reload --port 8000" Enter
+tmux send-keys -t "$SESSION:api" "uv run uvicorn rlx_api.main:app --reload --port 8000" Enter
 
 # Window 3: redis
 tmux new-window -t "$SESSION" -n redis -c "$SCRIPT_DIR"
@@ -35,11 +35,11 @@ fi
 
 # Window 4: worker (wait a moment for redis to start)
 tmux new-window -t "$SESSION" -n worker -c "$SCRIPT_DIR/apps/api"
-tmux send-keys -t "$SESSION:worker" "sleep 2 && PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops" Enter
+tmux send-keys -t "$SESSION:worker" "sleep 2 && uv run celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops" Enter
 
 # Window 5: scheduler
 tmux new-window -t "$SESSION" -n scheduler -c "$SCRIPT_DIR/apps/api"
-tmux send-keys -t "$SESSION:scheduler" "sleep 2 && PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info" Enter
+tmux send-keys -t "$SESSION:scheduler" "sleep 2 && uv run celery -A rlx_api.celery_app:celery_app beat --loglevel=info" Enter
 
 # Select first window (web)
 tmux select-window -t "$SESSION:web"

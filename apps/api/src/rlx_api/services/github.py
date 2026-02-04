@@ -10,7 +10,7 @@ import httpx
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import GitHubConnection
+from rlx_api.database import GitHubConnection
 
 logger = logging.getLogger(__name__)
 

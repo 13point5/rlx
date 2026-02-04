@@ -132,7 +132,7 @@ This branch implements a Celery-based job queue system for executing commands on
 ### 8. Results Mixed with Config in Same Column
 
 **Severity**: Medium  
-**Location**: [apps/api/celery_app/tasks/repo_tasks.py:344-350](apps/api/celery_app/tasks/repo_tasks.py)
+**Location**: [apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py:344-350](apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py)
 
 **Problem**: Job results are stored by mutating the input config:
 
@@ -169,7 +169,7 @@ job.job_result = {"files": files, "directories": directories}
 ### 9. Job Status Flips FAILED → RUNNING on Retries
 
 **Severity**: Low  
-**Location**: [apps/api/celery_app/tasks/repo_tasks.py:248-257](apps/api/celery_app/tasks/repo_tasks.py)
+**Location**: [apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py:248-257](apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py)
 
 **Problem**: Before retry, job is marked FAILED:
 
@@ -201,7 +201,7 @@ except Exception as e:
 ### 10. Retries Create Duplicate JobCommand Records
 
 **Severity**: Low  
-**Location**: [apps/api/celery_app/tasks/repo_tasks.py:178](apps/api/celery_app/tasks/repo_tasks.py)
+**Location**: [apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py:178](apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py)
 
 **Problem**: Each task execution creates a new JobCommand with `sequence=0`:
 
@@ -250,12 +250,12 @@ cmd_id = self.record_command(job_id, clone_cmd, None, sequence=self.request.retr
 
 **Problem**: The same `sys.path.insert` pattern appears in:
 
-- `celery_app/__init__.py`
-- `celery_app/tasks/base.py`
-- `celery_app/tasks/pod_tasks.py`
-- `celery_app/tasks/repo_tasks.py`
+- `rlx_api/celery_app/__init__.py`
+- `rlx_api/celery_app/tasks/base.py`
+- `rlx_api/celery_app/tasks/pod_tasks.py`
+- `rlx_api/celery_app/tasks/repo_tasks.py`
 
-**Recommendation**: Consolidate to a single location (e.g., `celery_app/__init__.py`) that's imported first.
+**Recommendation**: Consolidate to a single location (e.g., `rlx_api/celery_app/__init__.py`) that's imported first.
 
 ---
 

@@ -2,8 +2,8 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
 
-from deps import CurrentUser
-from services.prime_intellect import (
+from rlx_api.deps import CurrentUser
+from rlx_api.services.prime_intellect import (
     PrimeIntellectAPIError,
     fetch_gpu_availability,
 )

@@ -5,10 +5,10 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Job, Project, Run, RunStatus, UserSshKey
-from deps import CurrentUser, DbSession
-from job_templates import create_jobs_from_templates
-from services.prime_intellect import (
+from rlx_api.database import Job, Project, Run, RunStatus, UserSshKey
+from rlx_api.deps import CurrentUser, DbSession
+from rlx_api.job_templates import create_jobs_from_templates
+from rlx_api.services.prime_intellect import (
     DEFAULT_IMAGE,
     PrimeIntellectAPIError,
     create_pod,

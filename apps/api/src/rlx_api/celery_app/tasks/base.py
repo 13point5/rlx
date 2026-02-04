@@ -2,16 +2,9 @@
 
 import logging
 import os
-import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Generator
-
-# Ensure apps/api is in Python path for worker processes
-API_DIR = Path(__file__).resolve().parent.parent.parent
-if str(API_DIR) not in sys.path:
-    sys.path.insert(0, str(API_DIR))
 
 from celery import Task
 from dotenv import load_dotenv
@@ -119,7 +112,7 @@ class DatabaseTask(Task):
         **kwargs,
     ) -> None:
         """Update job status in database."""
-        from database import Job
+        from rlx_api.database import Job
 
         with self.get_db_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
@@ -141,7 +134,7 @@ class DatabaseTask(Task):
         sequence: int = 0,
     ) -> int:
         """Record a command execution in the database."""
-        from database import CommandStatus, JobCommand
+        from rlx_api.database import CommandStatus, JobCommand
 
         with self.get_db_session() as session:
             cmd = JobCommand(
@@ -167,7 +160,7 @@ class DatabaseTask(Task):
         duration_ms: int | None = None,
     ) -> None:
         """Update command execution result."""
-        from database import JobCommand
+        from rlx_api.database import JobCommand
 
         with self.get_db_session() as session:
             cmd = session.query(JobCommand).filter(JobCommand.id == command_id).first()

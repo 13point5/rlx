@@ -45,22 +45,24 @@ The job queue system enables asynchronous execution of commands on GPU pods. Whe
 
 ```
 apps/api/
-├── celery_app/
-│   ├── __init__.py           # Celery app configuration
-│   ├── config.py             # Settings (timeouts, retries, etc.)
-│   ├── executors/
-│   │   ├── __init__.py
-│   │   ├── base.py           # CommandExecutor ABC, CommandResult
-│   │   └── ssh.py            # SSH executor using asyncssh
-│   └── tasks/
-│       ├── __init__.py
-│       ├── base.py           # DatabaseTask base class, get_sync_session()
-│       ├── pod_tasks.py      # Pod lifecycle tasks
-│       └── repo_tasks.py     # Repository operations
-├── job_templates.py          # Job template definitions (reusable)
-├── routers/
-│   ├── jobs.py               # Jobs API endpoints
-│   └── runs.py               # Runs API (includes sync-jobs endpoint)
+├── src/
+│   └── rlx_api/
+│       ├── celery_app/
+│       │   ├── __init__.py           # Celery app configuration
+│       │   ├── config.py             # Settings (timeouts, retries, etc.)
+│       │   ├── executors/
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py           # CommandExecutor ABC, CommandResult
+│       │   │   └── ssh.py            # SSH executor using asyncssh
+│       │   └── tasks/
+│       │       ├── __init__.py
+│       │       ├── base.py           # DatabaseTask base class, get_sync_session()
+│       │       ├── pod_tasks.py      # Pod lifecycle tasks
+│       │       └── repo_tasks.py     # Repository operations
+│       ├── job_templates.py          # Job template definitions (reusable)
+│       └── routers/
+│           ├── jobs.py               # Jobs API endpoints
+│           └── runs.py               # Runs API (includes sync-jobs endpoint)
 └── alembic/versions/
     └── add_jobs_tables.py    # Database migration
 ```
@@ -72,7 +74,7 @@ apps/api/
 The `CommandExecutor` provides a clean interface for executing commands with structured results:
 
 ```python
-from celery_app.executors import SSHCommandExecutor, CommandResult
+from rlx_api.celery_app.executors import SSHCommandExecutor, CommandResult
 
 # Create executor from connection string (as returned by Prime Intellect)
 # Supports formats: "ssh ubuntu@host", "root@host -p 22", etc.
@@ -524,7 +526,7 @@ Use this when new jobs are added to the template after a run was created.
 
 ### Job Templates
 
-Jobs are defined in `apps/api/job_templates.py` as reusable templates:
+Jobs are defined in `apps/api/src/rlx_api/job_templates.py` as reusable templates:
 
 ```python
 JOB_TEMPLATES = [
@@ -590,20 +592,20 @@ The frontend status endpoints (`GET /api/runs/{id}/status`) simply read from the
 
 ### Development
 
-**Important**: The `PYTHONPATH=.` prefix is required so Celery workers can import modules like `database`, `services`, etc.
+**Important**: No `PYTHONPATH` override is needed now that the API is a proper package.
 
 ```bash
 # Terminal 1: FastAPI server
 cd apps/api
-uv run uvicorn main:app --reload --port 8000
+uv run uvicorn rlx_api.main:app --reload --port 8000
 
-# Terminal 2: Celery worker (PYTHONPATH=. is required!)
+# Terminal 2: Celery worker
 cd apps/api
-PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
+uv run celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops
 
 # Terminal 3: Celery beat (scheduler)
 cd apps/api
-PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
+uv run celery -A rlx_api.celery_app:celery_app beat --loglevel=info
 ```
 
 ### Production
@@ -611,11 +613,11 @@ PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
 Use separate containers/processes for each component:
 
 ```bash
-# Worker (set PYTHONPATH in container environment)
-PYTHONPATH=/app celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops --concurrency=4
+# Worker
+celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops --concurrency=4
 
 # Beat scheduler
-PYTHONPATH=/app celery -A celery_app beat --loglevel=info
+celery -A rlx_api.celery_app:celery_app beat --loglevel=info
 ```
 
 ## Configuration
@@ -670,7 +672,7 @@ Tasks use exponential backoff with jitter:
 | `Permission denied for user root`                 | SSH key not provisioned to pod                  | Ensure user has SSH key configured; we now explicitly pass `sshKeyId` when creating pods |
 | `Event loop is closed`                            | Multiple `run_async()` calls with same executor | Wrap all async ops in single async function                                              |
 | `No such file or directory: /workspace`           | Directory doesn't exist on pod                  | Clone task now auto-creates parent directories                                           |
-| `ModuleNotFoundError: No module named 'database'` | Missing PYTHONPATH                              | Run worker with `PYTHONPATH=.` prefix                                                    |
+| `ModuleNotFoundError: No module named 'rlx_api'` | Package not installed in the environment        | Run `uv sync` in `apps/api` to install the package                                       |
 | `No SSH key found`                                | User tried to create run without SSH key        | Generate SSH key in Settings before creating runs                                        |
 
 ### Dead Letter Queue
@@ -690,7 +692,7 @@ Failed tasks after all retries are logged and the job status is set to `FAILED`.
 uv add flower
 
 # Run
-uv run celery -A celery_app flower --port=5555
+uv run celery -A rlx_api.celery_app:celery_app flower --port=5555
 ```
 
 Access at http://localhost:5555 for:
@@ -702,7 +704,7 @@ Access at http://localhost:5555 for:
 
 ## Adding New Job Types
 
-1. Add the type to `JobType` enum in `database.py`:
+1. Add the type to `JobType` enum in `apps/api/src/rlx_api/database.py`:
 
 ```python
 class JobType(StrEnum):
@@ -712,7 +714,7 @@ class JobType(StrEnum):
     INSTALL_DEPS = "INSTALL_DEPS"  # New type
 ```
 
-2. Create the task in `celery_app/tasks/repo_tasks.py`:
+2. Create the task in `rlx_api/celery_app/tasks/repo_tasks.py`:
 
 ```python
 @celery_app.task(bind=True, base=DatabaseTask, max_retries=3)
@@ -721,20 +723,20 @@ def install_dependencies(self, job_id: int):
     pass
 ```
 
-3. Register in the `queue_job` function in `celery_app/tasks/pod_tasks.py`:
+3. Register in the `queue_job` function in `rlx_api/celery_app/tasks/pod_tasks.py`:
 
 ```python
 def queue_job(job, session):
     # ... existing handlers ...
     elif job.job_type == "INSTALL_DEPS":
-        from celery_app.tasks.repo_tasks import install_dependencies
+        from rlx_api.celery_app.tasks.repo_tasks import install_dependencies
         task = install_dependencies.delay(job.id)
 ```
 
-4. Export in `celery_app/tasks/__init__.py`:
+4. Export in `rlx_api/celery_app/tasks/__init__.py`:
 
 ```python
-from celery_app.tasks.repo_tasks import install_dependencies
+from rlx_api.celery_app.tasks.repo_tasks import install_dependencies
 ```
 
 ## Security Considerations

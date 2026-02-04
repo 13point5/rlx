@@ -9,10 +9,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import GitHubConnection, Project, get_db
-from deps import CurrentUser, DbSession, get_github_connection, get_valid_github_token
-from services import github as github_service
-from services.github import (
+from rlx_api.database import GitHubConnection, Project, get_db
+from rlx_api.deps import CurrentUser, DbSession, get_github_connection, get_valid_github_token
+from rlx_api.services import github as github_service
+from rlx_api.services.github import (
     GitHubAPIError,
     GitHubNoAccessError,
     GitHubRateLimitError,

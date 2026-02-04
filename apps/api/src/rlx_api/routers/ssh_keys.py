@@ -7,14 +7,14 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import UserSshKey
-from deps import CurrentUser, DbSession
-from services.aws_secrets_manager import (
+from rlx_api.database import UserSshKey
+from rlx_api.deps import CurrentUser, DbSession
+from rlx_api.services.aws_secrets_manager import (
     SecretsManagerError,
     create_private_key_secret,
     delete_private_key_secret,
 )
-from services.prime_intellect import (
+from rlx_api.services.prime_intellect import (
     PrimeIntellectAPIError,
     upload_prime_ssh_key,
     delete_prime_ssh_key,

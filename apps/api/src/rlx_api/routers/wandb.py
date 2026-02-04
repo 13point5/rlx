@@ -3,8 +3,8 @@ import os
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from deps import CurrentUser
-from services.aws_secrets_manager import (
+from rlx_api.deps import CurrentUser
+from rlx_api.services.aws_secrets_manager import (
     SecretsManagerError,
     create_wandb_api_key_secret,
     get_secret_arn_by_name,

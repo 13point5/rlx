@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import compute, github, health, jobs, projects, runs, ssh_keys, wandb
+from rlx_api.routers import compute, github, health, jobs, projects, runs, ssh_keys, wandb
 
 load_dotenv()
 
@@ -34,4 +34,4 @@ app.include_router(wandb.router)
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("rlx_api.main:app", host="0.0.0.0", port=8000, reload=True)

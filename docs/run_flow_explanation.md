@@ -8,9 +8,9 @@ A **Run** represents a GPU compute instance provisioned through Prime Intellect 
 
 ## Database Schema
 
-The `Run` model (`apps/api/database.py`) stores:
+The `Run` model (`apps/api/src/rlx_api/database.py`) stores:
 
-```99:126:apps/api/database.py
+```99:126:apps/api/src/rlx_api/database.py
 class Run(Base):
     __tablename__ = "runs"
 
@@ -354,18 +354,18 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 2. On "Start Run" click, calls `startRun()` server action
 3. Server action (`apps/web/app/actions/api.ts`) sends POST to `/api/runs`
 
-**Backend (`apps/api/routers/runs.py` - `create_run`):**
+**Backend (`apps/api/src/rlx_api/routers/runs.py` - `create_run`):**
 
 1. Validates project exists and belongs to user
 2. Validates user has an SSH key configured
 3. Builds pod payload with GPU specs and SSH key ID
-4. Calls Prime Intellect API `create_pod()` (`apps/api/services/prime_intellect.py`)
+4. Calls Prime Intellect API `create_pod()` (`apps/api/src/rlx_api/services/prime_intellect.py`)
 5. Receives `pod_id` and initial `status` from Prime Intellect
 6. Creates `Run` record in database with:
    - Status from Prime Intellect response (or "PROVISIONING" default)
    - All run metadata (name, branch, config, GPU specs, etc.)
    - `pod_id` for future status queries
-7. Creates initial jobs from templates (`apps/api/job_templates.py`):
+7. Creates initial jobs from templates (`apps/api/src/rlx_api/job_templates.py`):
    - Clone user's project repo
    - List files in repo
    - Clone prime-rl framework
@@ -396,7 +396,7 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 2. Each poll calls `getRunStatus(runId)` server action
 3. Server action calls `GET /api/runs/{runId}/status`
 
-**Backend (`apps/api/routers/runs.py` - `get_run_status`):**
+**Backend (`apps/api/src/rlx_api/routers/runs.py` - `get_run_status`):**
 
 1. Fetches run from database
 2. If status is "TERMINATED", returns immediately (no API call)
@@ -419,7 +419,7 @@ Project Page    Server Actions    Backend API      PostgreSQL      Prime Intelle
 2. Extracts run IDs from results
 3. Calls `getRunStatuses(runIds)` to batch-fetch live statuses
 
-**Batch Status Fetch (`apps/api/routers/runs.py` - `get_runs_status`):**
+**Batch Status Fetch (`apps/api/src/rlx_api/routers/runs.py` - `get_runs_status`):**
 
 1. Receives list of run IDs
 2. Fetches runs from database

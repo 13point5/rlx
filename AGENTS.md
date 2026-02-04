@@ -69,7 +69,7 @@ cd apps/api
 uv sync
 
 # Run development server (http://localhost:8000, with auto-reload)
-uv run uvicorn main:app --reload --port 8000
+uv run uvicorn rlx_api.main:app --reload --port 8000
 
 # Create a new database migration (after modifying database.py models)
 uv run alembic revision --autogenerate -m "description of changes"
@@ -93,13 +93,13 @@ uv add <package-name>
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 
 # Start Celery worker (in separate terminal)
-PYTHONPATH=. uv run celery -A celery_app worker --loglevel=info -Q pod_ops,repo_ops
+uv run celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops
 
 # Start Celery beat scheduler (in separate terminal, for periodic tasks)
-PYTHONPATH=. uv run celery -A celery_app beat --loglevel=info
+uv run celery -A rlx_api.celery_app:celery_app beat --loglevel=info
 
 # Optional: Flower monitoring UI (http://localhost:5555)
-uv run celery -A celery_app flower --port=5555
+uv run celery -A rlx_api.celery_app:celery_app flower --port=5555
 ```
 
 ---
@@ -116,7 +116,7 @@ uv run celery -A celery_app flower --port=5555
 
 ### Database Architecture
 
-**Location:** `apps/api/database.py`
+**Location:** `apps/api/src/rlx_api/database.py`
 
 - **SQLAlchemy async engine** with asyncpg driver
 - **Models:** `GitHubConnection`, `Project`, `Run`, `UserSSHKey` (extend `Base` from `DeclarativeBase`)
@@ -131,12 +131,12 @@ uv run celery -A celery_app flower --port=5555
 
 ### API Structure
 
-**Entry point:** `apps/api/main.py`
+**Entry point:** `apps/api/src/rlx_api/main.py`
 
 - FastAPI app with CORS middleware (allows `http://localhost:3000`)
 - Routers registered: `health`, `compute`, `github`, `projects`, `runs`, `ssh_keys`
 
-**Routers** (`apps/api/routers/`):
+**Routers** (`apps/api/src/rlx_api/routers/`):
 
 - Group related endpoints by feature
 - Use dependencies from `deps.py`: `CurrentUser`, `DbSession`
@@ -150,14 +150,14 @@ uv run celery -A celery_app flower --port=5555
 | `runs.py`     | Training run management                |
 | `ssh_keys.py` | SSH key management                     |
 
-**Services** (`apps/api/services/`):
+**Services** (`apps/api/src/rlx_api/services/`):
 
 - Business logic and external API integrations
 - `github.py` - GitHub API client logic
 - `prime_intellect.py` - Compute provider integration
 - `aws_secrets_manager.py` - Secrets storage
 
-**Dependencies** (`apps/api/deps.py`):
+**Dependencies** (`apps/api/src/rlx_api/deps.py`):
 
 - `CurrentUser`: Annotated type for authenticated Clerk user
 - `DbSession`: Annotated type for async database session
@@ -204,13 +204,13 @@ uv run celery -A celery_app flower --port=5555
 
 ### Adding New API Routes
 
-1. Create a router file in `apps/api/routers/` (e.g., `routers/runs.py`):
+1. Create a router file in `apps/api/src/rlx_api/routers/` (e.g., `routers/runs.py`):
 
 ```python
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from deps import CurrentUser, DbSession
+from rlx_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -250,7 +250,7 @@ async def list_runs(user: CurrentUser, db: DbSession):
 2. Register the router in `main.py`:
 
 ```python
-from routers import github, health, projects, runs  # Add new import
+from rlx_api.routers import github, health, projects, runs  # Add new import
 
 app.include_router(runs.router)
 ```
@@ -314,7 +314,7 @@ async def start_training_job(config: dict) -> TrainingJob:
 
 ### Adding Database Models
 
-1. Define the model in `apps/api/database.py`:
+1. Define the model in `apps/api/src/rlx_api/database.py`:
 
 ```python
 class Run(Base):

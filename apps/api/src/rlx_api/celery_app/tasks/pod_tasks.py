@@ -1,16 +1,9 @@
 """Pod-related Celery tasks."""
 
 import logging
-import sys
-from pathlib import Path
 
-# Ensure apps/api is in Python path for worker processes
-_API_DIR = Path(__file__).resolve().parent.parent.parent
-if str(_API_DIR) not in sys.path:
-    sys.path.insert(0, str(_API_DIR))
-
-from celery_app import celery_app  # noqa: E402
-from celery_app.tasks.base import DatabaseTask  # noqa: E402
+from rlx_api.celery_app import celery_app  # noqa: E402
+from rlx_api.celery_app.tasks.base import DatabaseTask  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +16,19 @@ def queue_job(job, session):
     only queues if job status is still PENDING.
     """
     from sqlalchemy import update
-    from database import Job, JobStatus
+    from rlx_api.database import Job, JobStatus
 
     # Determine which task to run based on job type
     if job.job_type == "CLONE_REPO":
-        from celery_app.tasks.repo_tasks import clone_repository
+        from rlx_api.celery_app.tasks.repo_tasks import clone_repository
 
         task = clone_repository.delay(job.id)
     elif job.job_type == "LIST_FILES":
-        from celery_app.tasks.repo_tasks import list_files
+        from rlx_api.celery_app.tasks.repo_tasks import list_files
 
         task = list_files.delay(job.id)
     elif job.job_type == "CUSTOM_COMMAND":
-        from celery_app.tasks.repo_tasks import run_custom_command
+        from rlx_api.celery_app.tasks.repo_tasks import run_custom_command
 
         task = run_custom_command.delay(job.id)
     else:
@@ -65,8 +58,8 @@ def start_next_job_for_run(run_id: int):
     Start the next pending job for a run (by sequence order).
     Called after a job completes to continue the sequence.
     """
-    from database import Job, JobStatus, Run, RunStatus
-    from celery_app.tasks.base import get_sync_session
+    from rlx_api.database import Job, JobStatus, Run, RunStatus
+    from rlx_api.celery_app.tasks.base import get_sync_session
 
     with get_sync_session() as session:
         # Check if run is still active
@@ -104,7 +97,7 @@ def check_pending_jobs(self):
     Main job sequencing is handled by on_pod_ready and start_next_job_for_run.
     This is a fallback to catch any jobs that got stuck.
     """
-    from database import Job, JobStatus, Run, RunStatus
+    from rlx_api.database import Job, JobStatus, Run, RunStatus
 
     with self.get_db_session() as session:
         # Find runs that are ACTIVE with pending jobs but no running/queued jobs
@@ -185,7 +178,7 @@ def on_pod_ready(self, run_id: int):
     Starts the FIRST job (sequence 0) for the run.
     Subsequent jobs are started when each job completes.
     """
-    from database import Job, JobStatus
+    from rlx_api.database import Job, JobStatus
 
     logger.info(f"Pod ready for run {run_id}, starting first job")
 
@@ -222,7 +215,7 @@ def check_run_status(self, run_id: int) -> dict:
     Check the status of a specific run and trigger jobs if it's active.
     Called after run creation to monitor pod status.
     """
-    from database import Run, RunStatus
+    from rlx_api.database import Run, RunStatus
 
     with self.get_db_session() as session:
         run = session.query(Run).filter(Run.id == run_id).first()
@@ -252,8 +245,8 @@ def check_pending_run_statuses(self):
     This removes the dependency on frontend polling for job execution.
     """
     import asyncio
-    from database import Run, RunStatus
-    from services.prime_intellect import fetch_pod_status, normalize_pod_response
+    from rlx_api.database import Run, RunStatus
+    from rlx_api.services.prime_intellect import fetch_pod_status, normalize_pod_response
 
     # Statuses that indicate the run is waiting for the pod
     pending_statuses = [RunStatus.PENDING, RunStatus.PROVISIONING]

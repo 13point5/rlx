@@ -2,19 +2,12 @@
 
 import asyncio
 import logging
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
-# Ensure apps/api is in Python path for worker processes
-_API_DIR = Path(__file__).resolve().parent.parent.parent
-if str(_API_DIR) not in sys.path:
-    sys.path.insert(0, str(_API_DIR))
-
-from celery_app import celery_app
-from celery_app.config import settings
-from celery_app.executors.ssh import SSHCommandExecutor
-from celery_app.tasks.base import DatabaseTask
+from rlx_api.celery_app import celery_app
+from rlx_api.celery_app.config import settings
+from rlx_api.celery_app.executors.ssh import SSHCommandExecutor
+from rlx_api.celery_app.tasks.base import DatabaseTask
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +20,8 @@ def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
     Note: ssh_connection must be populated by check_pending_run_statuses
     before jobs can execute.
     """
-    from database import Run, UserSshKey
-    from services.aws_secrets_manager import get_private_key_secret
+    from rlx_api.database import Run, UserSshKey
+    from rlx_api.services.aws_secrets_manager import get_private_key_secret
 
     run = session.query(Run).filter(Run.id == run_id).first()
     if not run:
@@ -91,7 +84,7 @@ def clone_repository(self, job_id: int):
         "depth": 1  # Optional: shallow clone
     }
     """
-    from database import Job, JobStatus
+    from rlx_api.database import Job, JobStatus
 
     logger.info(f"Starting clone_repository task for job {job_id}")
 
@@ -175,7 +168,7 @@ def clone_repository(self, job_id: int):
                 logger.info(f"Job {job_id} completed successfully")
 
                 # Start next job in sequence
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
+                from rlx_api.celery_app.tasks.pod_tasks import start_next_job_for_run
 
                 start_next_job_for_run(job.run_id)
 
@@ -237,7 +230,7 @@ def list_files(self, job_id: int):
         "directories": ["src", "tests", "docs"]
     }
     """
-    from database import Job, JobStatus
+    from rlx_api.database import Job, JobStatus
 
     logger.info(f"Starting list_files task for job {job_id}")
 
@@ -313,7 +306,7 @@ def list_files(self, job_id: int):
                 )
 
                 # Start next job in sequence
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
+                from rlx_api.celery_app.tasks.pod_tasks import start_next_job_for_run
 
                 start_next_job_for_run(job.run_id)
 
@@ -365,7 +358,7 @@ def run_custom_command(self, job_id: int):
         "env": {"KEY": "value"}  # Optional environment variables
     }
     """
-    from database import Job, JobStatus
+    from rlx_api.database import Job, JobStatus
 
     logger.info(f"Starting custom command task for job {job_id}")
 
@@ -437,7 +430,7 @@ def run_custom_command(self, job_id: int):
                 session.commit()
 
                 # Start next job in sequence
-                from celery_app.tasks.pod_tasks import start_next_job_for_run
+                from rlx_api.celery_app.tasks.pod_tasks import start_next_job_for_run
 
                 start_next_job_for_run(job.run_id)
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from deps import CurrentUser
+from rlx_api.deps import CurrentUser
 
 router = APIRouter(tags=["health"])
 
