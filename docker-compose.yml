@@ -1,0 +1,96 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./apps/api
+    env_file:
+      - ./apps/api/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      BACKEND_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build:
+      context: ./apps/web
+    env_file:
+      - ./apps/web/.env.local
+    environment:
+      API_BASE_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    build:
+      context: ./apps/api
+    env_file:
+      - ./apps/api/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    command: [
+      "uv",
+      "run",
+      "celery",
+      "-A",
+      "rlx_api.celery_app:celery_app",
+      "worker",
+      "--loglevel=info",
+      "-Q",
+      "pod_ops,repo_ops"
+    ]
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ./apps/api
+    env_file:
+      - ./apps/api/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    command: [
+      "uv",
+      "run",
+      "celery",
+      "-A",
+      "rlx_api.celery_app:celery_app",
+      "beat",
+      "--loglevel=info"
+    ]
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
