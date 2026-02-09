@@ -17,6 +17,26 @@ load_dotenv()
 clerk = Clerk(bearer_auth=os.getenv("CLERK_SECRET_KEY"))
 
 
+def _normalize_party(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
+def _authorized_parties_from_cors() -> set[str]:
+    raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    parties = {_normalize_party(p) for p in raw.split(",") if p.strip()}
+    if not parties:
+        parties.add("http://localhost:3000")
+    return parties
+
+
+def _is_authorized_party_allowed(azp: str | None) -> bool:
+    if not azp:
+        return False
+
+    normalized = _normalize_party(azp)
+    return normalized in _authorized_parties_from_cors()
+
+
 async def get_current_user(request: Request) -> dict:
     """
     Dependency that authenticates the request using Clerk.
@@ -33,12 +53,9 @@ async def get_current_user(request: Request) -> dict:
         headers=dict(request.headers),
     )
 
-    # Authenticate the request
+    # Authenticate the request and then apply authorized party policy.
     request_state = clerk.authenticate_request(
-        httpx_request,
-        AuthenticateRequestOptions(
-            authorized_parties=["http://localhost:3000"],
-        ),
+        httpx_request, AuthenticateRequestOptions()
     )
 
     if not request_state.is_signed_in:
@@ -47,7 +64,15 @@ async def get_current_user(request: Request) -> dict:
             detail=f"Unauthorized: {request_state.reason}",
         )
 
-    return request_state.payload
+    payload = request_state.payload or {}
+    azp = payload.get("azp")
+    if not _is_authorized_party_allowed(azp):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Token invalid authorized party",
+        )
+
+    return payload
 
 
 # Type aliases for dependencies
@@ -60,7 +85,9 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # =============================================================================
 
 
-async def get_github_connection(clerk_user_id: str, db: AsyncSession) -> GitHubConnection:
+async def get_github_connection(
+    clerk_user_id: str, db: AsyncSession
+) -> GitHubConnection:
     """Get the user's GitHub connection or raise 404."""
     result = await db.execute(
         select(GitHubConnection).where(GitHubConnection.clerk_user_id == clerk_user_id)
@@ -87,6 +114,8 @@ async def get_valid_github_token(connection: GitHubConnection, db: AsyncSession)
     if not access_token:
         await db.delete(connection)
         await db.commit()
-        raise HTTPException(status_code=401, detail="GitHub token expired. Please reconnect.")
+        raise HTTPException(
+            status_code=401, detail="GitHub token expired. Please reconnect."
+        )
 
     return access_token

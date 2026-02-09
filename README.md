@@ -44,6 +44,17 @@ REDIS_URL=rediss://default:<url_encoded_password>@redis-xxxx.cloud.redislabs.com
 
 If the password contains special characters (`@`, `:`, `/`, `#`, `%`, etc.), URL-encode it first.
 
+If you sign in via an ephemeral preview domain and API calls fail with
+`TOKEN_INVALID_AUTHORIZED_PARTIES`, update Clerk verification settings in
+`apps/api/.env.sandbox`:
+
+```bash
+# Authorized parties are derived from CORS_ORIGINS.
+# Include both local and preview frontend origins.
+CORS_ORIGINS=http://localhost:3000,https://<your-preview>.modal.host
+
+```
+
 ## Codeflix automation config
 
 This repo includes `codeflix.json` for sandbox automation. It runs:
