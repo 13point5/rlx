@@ -1,0 +1,4 @@
+{
+  "setup": "bash scripts/codeflix-setup.sh",
+  "run": "bash scripts/codeflix-run.sh"
+}
