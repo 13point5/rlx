@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 type TerminalTone = "default" | "stderr";
@@ -6,6 +9,7 @@ interface TerminalOutputProps {
   text: string;
   tone?: TerminalTone;
   className?: string;
+  autoScroll?: boolean;
 }
 
 interface AnsiStyleState {
@@ -63,6 +67,8 @@ const ANSI_BG_CLASSES: Record<number, string> = {
   106: "bg-cyan-800/70",
   107: "bg-zinc-100/20",
 };
+
+const AUTO_SCROLL_THRESHOLD_PX = 64;
 
 function applyAnsiCodes(
   current: AnsiStyleState,
@@ -194,9 +200,51 @@ export function TerminalOutput({
   text,
   tone = "default",
   className,
+  autoScroll = true,
 }: TerminalOutputProps) {
+  const containerRef = useRef<HTMLPreElement>(null);
+  const shouldStickToBottomRef = useRef(true);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || !autoScroll) {
+      return;
+    }
+
+    const updateStickyState = () => {
+      const distanceFromBottom =
+        element.scrollHeight - element.scrollTop - element.clientHeight;
+      shouldStickToBottomRef.current =
+        distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
+    };
+
+    updateStickyState();
+    element.addEventListener("scroll", updateStickyState);
+
+    return () => {
+      element.removeEventListener("scroll", updateStickyState);
+    };
+  }, [autoScroll]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || !autoScroll || !shouldStickToBottomRef.current) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [autoScroll, text]);
+
   return (
     <pre
+      ref={containerRef}
+      role="log"
       className={cn(
         "overflow-auto rounded border p-2 font-mono text-xs leading-5 whitespace-pre-wrap break-words",
         "bg-zinc-950 text-zinc-100 border-zinc-800",

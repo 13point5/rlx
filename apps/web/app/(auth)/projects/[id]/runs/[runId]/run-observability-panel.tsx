@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getRunLog, getRunObservability } from "@/app/actions/api";
 import { TerminalOutput } from "@/components/terminal-output";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   RunLogResponse,
@@ -43,7 +42,8 @@ export function RunObservabilityPanel({
       return response.observability as RunObservabilityResponse;
     },
     refetchInterval: (query) => {
-      const status = (query.state.data as RunObservabilityResponse | undefined)?.status;
+      const status = (query.state.data as RunObservabilityResponse | undefined)
+        ?.status;
       return TERMINAL_RUN_STATUSES.has(status ?? initialRunStatus) ? false : 5000;
     },
   });
@@ -100,76 +100,34 @@ export function RunObservabilityPanel({
   const activeText =
     activeLog?.chunks.map((chunk) => chunk.content).join("") ?? "";
   const activeStatus = activeLog?.status ?? activeStream?.status ?? "ACTIVE";
-  const activeUpdatedAt = activeStream?.updated_at
-    ? new Date(activeStream.updated_at).toLocaleTimeString()
-    : null;
-
-  const orchestratorWandbUrl = observability?.wandb.orchestrator?.url;
-  const trainerWandbUrl = observability?.wandb.trainer?.url;
 
   return (
-    <Card>
-      <CardHeader className="space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle>Observability</CardTitle>
-            {isLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {orchestratorWandbUrl ? (
-              <Button asChild size="sm" variant="outline">
-                <a
-                  href={orchestratorWandbUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Open Orchestrator Run
-                </a>
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" disabled>
-                <ExternalLink className="h-3 w-3" />
-                Open Orchestrator Run
-              </Button>
-            )}
-            {trainerWandbUrl ? (
-              <Button asChild size="sm" variant="outline">
-                <a href={trainerWandbUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-3 w-3" />
-                  Open Trainer Run
-                </a>
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" disabled>
-                <ExternalLink className="h-3 w-3" />
-                Open Trainer Run
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card size="sm" className="min-w-0">
+      <CardContent className="flex flex-col gap-4">
         {error && (
-          <div className="text-sm text-destructive">
+          <div className="border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {(error as Error).message}
           </div>
         )}
 
         {streams.length === 0 ? (
-          <div className="rounded-none border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-            Prime RL observability streams will appear here once the launch job starts.
+          <div className="border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
+            Prime RL observability streams will appear here once the launch job
+            starts.
           </div>
         ) : (
           <Tabs
             value={activeSource ?? undefined}
             onValueChange={(value) => setSelectedSource(value as RunLogSource)}
+            className="min-w-0"
           >
-            <TabsList className="h-auto w-full justify-start overflow-x-auto">
+            <TabsList className="h-auto max-w-full justify-start self-start overflow-x-auto">
               {streams.map((stream) => (
-                <TabsTrigger key={stream.source} value={stream.source}>
+                <TabsTrigger
+                  key={stream.source}
+                  value={stream.source}
+                  className="flex-none px-3"
+                >
                   {stream.display_name}
                 </TabsTrigger>
               ))}
@@ -181,42 +139,43 @@ export function RunObservabilityPanel({
               const streamError = isActive ? activeLogError : null;
               const streamLoading = isActive ? isLoadingLog : false;
               const streamStatus = isActive ? activeStatus : stream.status;
-              const isEmpty = isActive && !streamLoading && !streamError && streamText.length === 0;
+              const isEmpty =
+                isActive &&
+                !streamLoading &&
+                !streamError &&
+                streamText.length === 0;
 
               return (
-                <TabsContent key={stream.source} value={stream.source} className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>Status: {streamStatus}</span>
-                    {isActive && activeUpdatedAt && <span>Updated {activeUpdatedAt}</span>}
+                <TabsContent key={stream.source} value={stream.source}>
+                  <div className="min-w-0 border border-border bg-background">
+                    {streamError && (
+                      <div className="border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                        {(streamError as Error).message}
+                      </div>
+                    )}
+
+                    {(isLoading || streamLoading) && (
+                      <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" />
+                        Loading {stream.display_name.toLowerCase()} logs...
+                      </div>
+                    )}
+
+                    {isEmpty && (
+                      <div className="px-4 py-10 text-sm text-muted-foreground">
+                        {TERMINAL_STREAM_STATUSES.has(streamStatus)
+                          ? "No output was captured for this stream."
+                          : `Waiting for ${stream.display_name.toLowerCase()} output...`}
+                      </div>
+                    )}
+
+                    {streamText && (
+                      <TerminalOutput
+                        text={streamText}
+                        className="min-h-[520px] max-h-[72vh] rounded-none border-0 p-3"
+                      />
+                    )}
                   </div>
-
-                  {streamError && (
-                    <div className="text-sm text-destructive">
-                      {(streamError as Error).message}
-                    </div>
-                  )}
-
-                  {streamLoading && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading {stream.display_name.toLowerCase()} logs...
-                    </div>
-                  )}
-
-                  {isEmpty && (
-                    <div className="rounded-none border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-                      {TERMINAL_STREAM_STATUSES.has(streamStatus)
-                        ? "No output was captured for this stream."
-                        : `Waiting for ${stream.display_name.toLowerCase()} output...`}
-                    </div>
-                  )}
-
-                  {streamText && (
-                    <TerminalOutput
-                      text={streamText}
-                      className="min-h-[320px] max-h-[70vh] rounded-none"
-                    />
-                  )}
                 </TabsContent>
               );
             })}

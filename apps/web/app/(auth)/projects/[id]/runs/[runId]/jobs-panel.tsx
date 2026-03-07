@@ -1,40 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { LucideIcon } from "lucide-react";
 import {
-  CheckCircle2,
   Check,
-  Circle,
-  Clock,
-  Loader2,
-  XCircle,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FolderGit2,
-  FolderOpen,
-  Terminal,
+  Circle,
+  Clock,
   Copy,
-  RotateCcw,
+  Loader2,
   RefreshCw,
+  RotateCcw,
+  XCircle,
 } from "lucide-react";
 import {
-  getRunJobs,
   getJobDetails,
+  getRunJobs,
   getRunStatus,
   retryJob,
   syncRunJobs,
 } from "@/app/actions/api";
+import { TerminalOutput } from "@/components/terminal-output";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TerminalOutput } from "@/components/terminal-output";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type {
-  JobResponse,
+  JobCommand,
   JobDetailResponse,
+  JobResponse,
   JobStatus,
-  JobType,
   RunStatusResponse,
 } from "@/lib/types";
 
@@ -43,11 +46,13 @@ interface JobsPanelProps {
   runStatus: string;
 }
 
-function isRunActive(runStatus: string): boolean {
+type JobSectionKey = "running" | "queued" | "failed" | "completed";
+
+function isRunActive(runStatus: string) {
   return runStatus === "ACTIVE";
 }
 
-function isRunRetryable(runStatus: string): boolean {
+function isRunRetryable(runStatus: string) {
   return (
     runStatus !== "TERMINATED" &&
     runStatus !== "STOPPED" &&
@@ -55,7 +60,7 @@ function isRunRetryable(runStatus: string): boolean {
   );
 }
 
-function isJobTerminal(status: JobStatus): boolean {
+function isJobTerminal(status: JobStatus) {
   return (
     status === "SUCCESS" ||
     status === "FAILED" ||
@@ -64,113 +69,224 @@ function isJobTerminal(status: JobStatus): boolean {
   );
 }
 
-function getIdleJobMessage(status: JobStatus, runStatus: string): string | null {
+function formatStatusLabel(status: string) {
+  return status.toLowerCase().replaceAll("_", " ");
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "Unavailable";
+  }
+
+  return new Date(value).toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function formatTime(value: string | null | undefined) {
+  if (!value) {
+    return "Pending";
+  }
+
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function formatDuration(durationMs: number | null | undefined) {
+  if (durationMs === null || durationMs === undefined || Number.isNaN(durationMs)) {
+    return null;
+  }
+
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+
+  if (durationMs < 60_000) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
+
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+function getDurationFromRange(
+  startedAt: string | null | undefined,
+  completedAt: string | null | undefined
+) {
+  if (!startedAt) {
+    return null;
+  }
+
+  const startTime = new Date(startedAt).getTime();
+  const endTime = completedAt ? new Date(completedAt).getTime() : Date.now();
+
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) {
+    return null;
+  }
+
+  return formatDuration(Math.max(endTime - startTime, 0));
+}
+
+function getIdleJobMessage(status: JobStatus, runStatus: string) {
   if (status === "PENDING") {
     return isRunActive(runStatus)
-      ? "This job is waiting for earlier jobs to finish."
-      : "The pod is still provisioning. This job has not started yet.";
+      ? "Waiting for earlier jobs to finish."
+      : "Pod is still provisioning.";
   }
 
   if (status === "QUEUED") {
-    return "This job is queued and will start when a worker picks it up.";
+    return "Waiting for a worker.";
   }
 
   if (status === "RUNNING") {
-    return "This job is running. Waiting for the first output...";
+    return "Fetching live output.";
   }
 
   return null;
 }
 
-function getJobTitle(job: JobResponse): string {
+function getJobTitle(job: JobResponse) {
   const config = job.config;
 
   switch (job.job_type) {
     case "CLONE_REPO": {
       const repoUrl = config?.repo_url as string | undefined;
       if (repoUrl) {
-        // Extract repo name from URL (e.g., "https://github.com/owner/repo.git" -> "repo")
         const match = repoUrl.match(/\/([^/]+?)(\.git)?$/);
         const repoName = match?.[1] || repoUrl;
         const targetDir = config?.target_dir as string | undefined;
-        return `Clone ${repoName}${targetDir ? ` → ${targetDir}` : ""}`;
+        return `Clone ${repoName}${targetDir ? ` -> ${targetDir}` : ""}`;
       }
-      return "Clone Repository";
+      return "Clone repository";
     }
     case "LIST_FILES": {
       const targetDir = config?.target_dir as string | undefined;
-      return targetDir ? `List files in ${targetDir}` : "List Files";
+      return targetDir ? `List files in ${targetDir}` : "List files";
     }
     case "CUSTOM_COMMAND": {
       const command = config?.command as string | undefined;
-      if (command) {
-        // Truncate long commands
-        const truncated =
-          command.length > 60 ? command.slice(0, 60) + "..." : command;
-        return truncated;
-      }
-      return "Run Command";
+      return command || "Run command";
     }
     default:
       return job.job_type;
   }
 }
 
-const jobTypeIcons: Record<JobType, React.ReactNode> = {
-  CLONE_REPO: <FolderGit2 className="h-4 w-4" />,
-  LIST_FILES: <FolderOpen className="h-4 w-4" />,
-  CUSTOM_COMMAND: <Terminal className="h-4 w-4" />,
-};
+function getJobSummary(job: JobResponse) {
+  const config = job.config;
+
+  switch (job.job_type) {
+    case "CLONE_REPO": {
+      const repoUrl = config?.repo_url as string | undefined;
+      return repoUrl || "Repository checkout";
+    }
+    case "LIST_FILES": {
+      const targetDir = config?.target_dir as string | undefined;
+      return targetDir ? `Directory ${targetDir}` : "Repository file listing";
+    }
+    case "CUSTOM_COMMAND": {
+      const workingDir = config?.working_dir as string | undefined;
+      return workingDir ? `Working dir ${workingDir}` : "Custom shell command";
+    }
+    default:
+      return formatStatusLabel(job.job_type);
+  }
+}
+
+function getJobContext(job: JobResponse, runStatus: string) {
+  const idleMessage = getIdleJobMessage(job.status, runStatus);
+  if (idleMessage) {
+    return idleMessage;
+  }
+
+  if (job.status === "SUCCESS") {
+    return `Completed at ${formatTime(job.completed_at)}`;
+  }
+
+  if (
+    job.status === "FAILED" ||
+    job.status === "TIMEOUT" ||
+    job.status === "CANCELLED"
+  ) {
+    return job.error_type ? `Ended with ${job.error_type}.` : "Needs attention.";
+  }
+
+  return formatStatusLabel(job.status);
+}
+
+function getJobSection(status: JobStatus): JobSectionKey {
+  if (status === "RUNNING") {
+    return "running";
+  }
+
+  if (status === "PENDING" || status === "QUEUED") {
+    return "queued";
+  }
+
+  if (status === "SUCCESS") {
+    return "completed";
+  }
+
+  return "failed";
+}
 
 const statusConfig: Record<
   JobStatus,
-  { icon: React.ReactNode; className: string; label: string }
+  { icon: LucideIcon; className: string; label: string }
 > = {
   PENDING: {
-    icon: <Circle className="h-4 w-4" />,
+    icon: Circle,
     className: "text-muted-foreground",
     label: "Pending",
   },
   QUEUED: {
-    icon: <Clock className="h-4 w-4" />,
-    className: "text-yellow-500",
+    icon: Clock,
+    className: "text-amber-300",
     label: "Queued",
   },
   RUNNING: {
-    icon: <Loader2 className="h-4 w-4 animate-spin" />,
-    className: "text-blue-500",
+    icon: Loader2,
+    className: "text-sky-300",
     label: "Running",
   },
   SUCCESS: {
-    icon: <CheckCircle2 className="h-4 w-4" />,
-    className: "text-green-500",
+    icon: CheckCircle2,
+    className: "text-emerald-400",
     label: "Success",
   },
   FAILED: {
-    icon: <XCircle className="h-4 w-4" />,
-    className: "text-red-500",
+    icon: XCircle,
+    className: "text-destructive",
     label: "Failed",
   },
   TIMEOUT: {
-    icon: <XCircle className="h-4 w-4" />,
-    className: "text-orange-500",
+    icon: XCircle,
+    className: "text-amber-300",
     label: "Timeout",
   },
   CANCELLED: {
-    icon: <XCircle className="h-4 w-4" />,
-    className: "text-gray-500",
+    icon: XCircle,
+    className: "text-muted-foreground",
     label: "Cancelled",
   },
 };
 
 function JobStatusBadge({ status }: { status: JobStatus }) {
   const config = statusConfig[status] ?? statusConfig.PENDING;
+  const Icon = config.icon;
+
   return (
     <Badge
       variant="outline"
-      className={cn("gap-1.5 font-normal", config.className)}
+      className={cn("gap-1.5 border px-2 py-0.5 font-normal", config.className)}
     >
-      {config.icon}
+      <Icon className={cn("size-3.5", status === "RUNNING" && "animate-spin")} />
       {config.label}
     </Badge>
   );
@@ -200,13 +316,116 @@ function CopyTextButton({
       type="button"
       size="icon-xs"
       variant="ghost"
-      className="h-5 w-5"
       onClick={handleCopy}
       aria-label={`Copy ${label}`}
       title={copied ? `${label} copied` : `Copy ${label}`}
     >
-      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? <Check /> : <Copy />}
     </Button>
+  );
+}
+
+function CommandSection({
+  command,
+  index,
+  totalCommands,
+}: {
+  command: JobCommand;
+  index: number;
+  totalCommands: number;
+}) {
+  const durationLabel =
+    formatDuration(command.duration_ms) ||
+    getDurationFromRange(command.started_at, command.completed_at);
+  const commandLabel = totalCommands > 1 ? `Command ${index + 1}` : "Command";
+
+  return (
+    <div className="border border-border bg-background">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/15 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Badge variant="outline">{commandLabel}</Badge>
+          <span
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={command.command}
+          >
+            $ {command.command}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {durationLabel && (
+            <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              {durationLabel}
+            </span>
+          )}
+          {command.exit_code !== null && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "px-2 py-0.5",
+                command.exit_code === 0 ? "text-emerald-400" : "text-destructive"
+              )}
+            >
+              Exit {command.exit_code}
+            </Badge>
+          )}
+          <CopyTextButton
+            text={command.command}
+            label={`${commandLabel.toLowerCase()} command`}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 p-3">
+        {command.working_dir && (
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            Working dir: <span className="font-mono lowercase">{command.working_dir}</span>
+          </div>
+        )}
+
+        {!command.stdout && !command.stderr && (
+          <div className="border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            {command.status === "RUNNING"
+              ? "Command is running. Waiting for the first output..."
+              : "No command output was captured."}
+          </div>
+        )}
+
+        {command.stdout && (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Stdout
+              </span>
+              <CopyTextButton
+                text={command.stdout}
+                label={`${commandLabel.toLowerCase()} stdout`}
+              />
+            </div>
+            <TerminalOutput text={command.stdout} className="max-h-56 rounded-none" />
+          </div>
+        )}
+
+        {command.stderr && (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-amber-300">
+                Stderr
+              </span>
+              <CopyTextButton
+                text={command.stderr}
+                label={`${commandLabel.toLowerCase()} stderr`}
+              />
+            </div>
+            <TerminalOutput
+              text={command.stderr}
+              tone="stderr"
+              className="max-h-56 rounded-none"
+            />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -226,7 +445,6 @@ function JobItem({
   const isTerminal = isJobTerminal(job.status);
   const shouldFetchDetails = isRunning || (expanded && isTerminal);
 
-  // Keep running jobs warm in the background. Terminal jobs fetch once on demand.
   const { data: jobDetails, isLoading: isLoadingDetails } = useQuery({
     queryKey: ["job-details", job.id],
     queryFn: async () => {
@@ -241,7 +459,6 @@ function JobItem({
     refetchInterval: isRunning && runIsActive ? 5000 : false,
   });
 
-  // Retry mutation
   const retryMutation = useMutation({
     mutationFn: async () => {
       const response = await retryJob(job.id);
@@ -251,14 +468,11 @@ function JobItem({
       return response.job;
     },
     onSuccess: () => {
-      // Invalidate jobs list to refetch
       queryClient.invalidateQueries({ queryKey: ["run-jobs", runId] });
-      // Clear job details cache
       queryClient.invalidateQueries({ queryKey: ["job-details", job.id] });
     },
   });
 
-  // Job can be retried if it's in a failed/cancelled/timeout state
   const canRetry =
     isRunRetryable(runStatus) &&
     (job.status === "FAILED" ||
@@ -279,210 +493,184 @@ function JobItem({
     !job.error_message &&
     !hasCommands &&
     idleJobMessage === null;
+  const title = getJobTitle(job);
+  const summary = getJobSummary(job);
+  const context = getJobContext(job, runStatus);
+  const durationLabel = getDurationFromRange(job.started_at, job.completed_at);
+  const StatusIcon = statusConfig[job.status]?.icon ?? Circle;
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div className="border-b border-border last:border-b-0">
       <div
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
+        className="cursor-pointer px-4 py-3 transition-colors hover:bg-muted/15"
+        onClick={() => setExpanded((current) => !current)}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setExpanded(!expanded);
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded((current) => !current);
           }
         }}
       >
-        <span className="text-muted-foreground">
-          {jobTypeIcons[job.job_type]}
-        </span>
-        <span
-          className="font-medium text-sm truncate max-w-[400px]"
-          title={getJobTitle(job)}
-        >
-          {getJobTitle(job)}
-        </span>
-        <JobStatusBadge status={job.status} />
-        {job.completed_at && job.started_at && (
-          <span className="text-xs text-muted-foreground">
-            {(() => {
-              const durationMs =
-                new Date(job.completed_at).getTime() -
-                new Date(job.started_at).getTime();
-              return durationMs < 1000
-                ? `${durationMs}ms`
-                : `${(durationMs / 1000).toFixed(1)}s`;
-            })()}
-          </span>
-        )}
-        <div className="flex-1" />
-        {canRetry && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              retryMutation.mutate();
-            }}
-            disabled={retryMutation.isPending}
-          >
-            {retryMutation.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RotateCcw className="h-3 w-3" />
+        <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_minmax(126px,auto)_minmax(92px,auto)_auto] md:items-center">
+          <div className="flex size-5 items-center justify-center">
+            <StatusIcon
+              className={cn(
+                "size-4 text-muted-foreground",
+                statusConfig[job.status]?.className,
+                job.status === "RUNNING" && "animate-spin"
+              )}
+            />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                #{job.sequence}
+              </span>
+              <span className="truncate text-sm font-medium text-foreground" title={title}>
+                {title}
+              </span>
+            </div>
+
+            <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              <span>{formatStatusLabel(job.job_type)}</span>
+              <span className="truncate" title={summary}>
+                {summary}
+              </span>
+              <span className="truncate" title={context}>
+                {context}
+              </span>
+            </div>
+          </div>
+
+          <div className="md:justify-self-start">
+            <JobStatusBadge status={job.status} />
+          </div>
+
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground md:text-right">
+            {durationLabel ?? formatTime(job.started_at ?? job.created_at)}
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            {canRetry && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  retryMutation.mutate();
+                }}
+                disabled={retryMutation.isPending}
+              >
+                {retryMutation.isPending ? (
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                ) : (
+                  <RotateCcw data-icon="inline-start" />
+                )}
+                Retry
+              </Button>
             )}
-            <span className="ml-1">Retry</span>
-          </Button>
-        )}
-        <span className="text-muted-foreground">
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-        </span>
+            {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </div>
+        </div>
       </div>
 
       {expanded && (
-        <div className="bg-muted/30 px-4 py-3 pl-12 space-y-3 text-sm">
-          {isLoadingDetails && shouldFetchDetails && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span className="text-xs">Loading details...</span>
-            </div>
-          )}
-
-          {isRunning && (
-            <div className="flex items-center gap-2 text-xs text-blue-500">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Live output refreshes every 5s</span>
-            </div>
-          )}
-
-          {/* Error message */}
-          {job.error_message && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-medium text-destructive">Error</p>
-                <CopyTextButton text={job.error_message} label="job error" />
-              </div>
-              <TerminalOutput
-                text={job.error_message}
-                tone="stderr"
-                className="max-h-32"
-              />
-            </div>
-          )}
-
-          {shouldShowIdleMessage && (
-            <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-              {idleJobMessage}
-            </div>
-          )}
-
-          {shouldShowNoDetailsMessage && (
-            <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-              No command output was captured for this job.
-            </div>
-          )}
-
-          {/* Command output from job details */}
-          {hasCommands && (
-            <div className="space-y-2">
-              {commands.map((cmd, idx) => (
-                <div key={cmd.id} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Command {commands.length > 1 ? idx + 1 : ""}
-                    </p>
-                    {cmd.exit_code !== null && (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-xs",
-                          cmd.exit_code === 0
-                            ? "text-green-500"
-                            : "text-red-500"
-                        )}
-                      >
-                        exit: {cmd.exit_code}
-                      </Badge>
-                    )}
-                    {cmd.duration_ms !== null && (
-                      <span className="text-xs text-muted-foreground">
-                        {cmd.duration_ms < 1000
-                          ? `${cmd.duration_ms}ms`
-                          : `${(cmd.duration_ms / 1000).toFixed(1)}s`}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Command that was run */}
-                  <pre className="whitespace-pre-wrap text-xs bg-muted rounded p-2 overflow-auto max-h-16 font-mono">
-                    $ {cmd.command}
-                  </pre>
-
-                  {!cmd.stdout && !cmd.stderr && (
-                    <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                      {cmd.status === "RUNNING"
-                        ? "Command is running. Waiting for the first output..."
-                        : "No command output was captured."}
-                    </div>
-                  )}
-
-                  {/* Stdout */}
-                  {cmd.stdout && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">Output</p>
-                        <CopyTextButton
-                          text={cmd.stdout}
-                          label={`command ${idx + 1} output`}
-                        />
-                      </div>
-                      <TerminalOutput text={cmd.stdout} className="max-h-48" />
-                    </div>
-                  )}
-
-                  {/* Stderr - show for all commands */}
-                  {cmd.stderr && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-orange-500">Stderr</p>
-                        <CopyTextButton
-                          text={cmd.stderr}
-                          label={`command ${idx + 1} stderr`}
-                        />
-                      </div>
-                      <TerminalOutput
-                        text={cmd.stderr}
-                        tone="stderr"
-                        className="max-h-48"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Duration */}
-          {job.completed_at && job.started_at && (
-            <p className="text-xs text-muted-foreground">
-              Total duration:{" "}
-              {Math.round(
-                (new Date(job.completed_at).getTime() -
-                  new Date(job.started_at).getTime()) /
-                  1000
+        <div className="border-t border-border bg-muted/10 px-4 py-3">
+          <div className="ml-8 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <span>Created {formatDateTime(job.created_at)}</span>
+              <span>Started {formatDateTime(job.started_at)}</span>
+              <span>Completed {formatDateTime(job.completed_at)}</span>
+              {job.celery_task_id && (
+                <span className="font-mono">Task {job.celery_task_id}</span>
               )}
-              s
-            </p>
-          )}
+              {job.error_type && <span>Error type {job.error_type}</span>}
+            </div>
+
+            {isLoadingDetails && shouldFetchDetails && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading job details...
+              </div>
+            )}
+
+            {isRunning && (
+              <div className="text-[11px] uppercase tracking-[0.18em] text-sky-300">
+                Live command output refreshes every 5 seconds.
+              </div>
+            )}
+
+            {job.error_message && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-destructive">
+                    Job Error
+                  </span>
+                  <CopyTextButton text={job.error_message} label="job error" />
+                </div>
+                <TerminalOutput
+                  text={job.error_message}
+                  tone="stderr"
+                  className="max-h-40 rounded-none"
+                />
+              </div>
+            )}
+
+            {shouldShowIdleMessage && (
+              <div className="border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                {idleJobMessage}
+              </div>
+            )}
+
+            {shouldShowNoDetailsMessage && (
+              <div className="border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                No command output was captured for this job.
+              </div>
+            )}
+
+            {hasCommands && (
+              <div className="flex flex-col gap-3">
+                {commands.map((command, index) => (
+                  <CommandSection
+                    key={command.id}
+                    command={command}
+                    index={index}
+                    totalCommands={commands.length}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function JobSection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-t border-border first:border-t-0">
+      <div className="flex items-center justify-between gap-3 bg-muted/10 px-4 py-2">
+        <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          {title}
+        </span>
+        <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          {count}
+        </span>
+      </div>
+      <div>{children}</div>
+    </section>
   );
 }
 
@@ -519,16 +707,15 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
       }
       return response.jobs ?? [];
     },
-    // Poll while run is active and jobs may still be processing
     refetchInterval: (query) => {
-      const currentJobs = query.state.data;
-      if (!isRunActive(effectiveRunStatus)) return false;
-      if (!currentJobs) return 5000;
+      const currentJobs = query.state.data as JobResponse[] | undefined;
+      if (!isRunActive(effectiveRunStatus)) {
+        return false;
+      }
+      if (!currentJobs) {
+        return 5000;
+      }
 
-      // Stop polling if run is terminated
-      if (effectiveRunStatus === "TERMINATED") return false;
-
-      // Keep polling if any job is not in a terminal state
       const hasActiveJobs = currentJobs.some(
         (job) =>
           job.status === "PENDING" ||
@@ -540,7 +727,6 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
     },
   });
 
-  // Sync jobs mutation
   const syncMutation = useMutation({
     mutationFn: async () => {
       const response = await syncRunJobs(runId);
@@ -550,63 +736,92 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
       return response;
     },
     onSuccess: () => {
-      // Refresh jobs list
       queryClient.invalidateQueries({ queryKey: ["run-jobs", runId] });
     },
   });
 
   const sortedJobs =
     jobs?.slice().sort((a, b) => a.sequence - b.sequence) ?? [];
+  const sections: Array<{ key: JobSectionKey; title: string; jobs: JobResponse[] }> = [
+    {
+      key: "running",
+      title: "In Progress",
+      jobs: sortedJobs.filter((job) => getJobSection(job.status) === "running"),
+    },
+    {
+      key: "queued",
+      title: "Queued",
+      jobs: sortedJobs.filter((job) => getJobSection(job.status) === "queued"),
+    },
+    {
+      key: "failed",
+      title: "Needs Attention",
+      jobs: sortedJobs.filter((job) => getJobSection(job.status) === "failed"),
+    },
+    {
+      key: "completed",
+      title: "Completed",
+      jobs: sortedJobs.filter((job) => getJobSection(job.status) === "completed"),
+    },
+  ];
+  const visibleSections = sections.filter((section) => section.jobs.length > 0);
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            Jobs
-            {isLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </CardTitle>
+    <Card size="sm" className="min-w-0">
+      <CardHeader className="gap-3 border-b">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <CardTitle>Jobs</CardTitle>
+              {isLoading && (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          </div>
+
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs"
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
           >
             {syncMutation.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="animate-spin" data-icon="inline-start" />
             ) : (
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw data-icon="inline-start" />
             )}
-            <span className="ml-1">Sync Jobs</span>
+            Sync Jobs
           </Button>
         </div>
       </CardHeader>
+
       <CardContent className="p-0">
         {error && (
-          <div className="px-4 py-3 text-sm text-destructive">
+          <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {(error as Error).message}
           </div>
         )}
 
         {!isLoading && sortedJobs.length === 0 && (
-          <div className="px-4 py-6 text-sm text-muted-foreground text-center">
-            No jobs yet
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No jobs yet.
           </div>
         )}
 
-        {sortedJobs.length > 0 && (
-          <div className="divide-y divide-border">
-              {sortedJobs.map((job) => (
-                <JobItem
-                  key={job.id}
-                  job={job}
-                  runId={runId}
-                  runStatus={effectiveRunStatus}
-                />
-              ))}
+        {visibleSections.length > 0 && (
+          <div>
+            {visibleSections.map((section) => (
+              <JobSection key={section.key} title={section.title} count={section.jobs.length}>
+                {section.jobs.map((job) => (
+                  <JobItem
+                    key={job.id}
+                    job={job}
+                    runId={runId}
+                    runStatus={effectiveRunStatus}
+                  />
+                ))}
+              </JobSection>
+            ))}
           </div>
         )}
       </CardContent>
