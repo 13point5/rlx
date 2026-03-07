@@ -25,6 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TerminalOutput } from "@/components/terminal-output";
 import { cn } from "@/lib/utils";
 import type {
   JobResponse,
@@ -36,6 +37,14 @@ import type {
 interface JobsPanelProps {
   runId: number;
   runStatus: string;
+}
+
+function isRunRetryable(runStatus: string): boolean {
+  return (
+    runStatus !== "TERMINATED" &&
+    runStatus !== "STOPPED" &&
+    runStatus !== "ERROR"
+  );
 }
 
 function getJobTitle(job: JobResponse): string {
@@ -132,7 +141,15 @@ function JobStatusBadge({ status }: { status: JobStatus }) {
   );
 }
 
-function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
+function JobItem({
+  job,
+  runId,
+  runStatus,
+}: {
+  job: JobResponse;
+  runId: number;
+  runStatus: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
 
@@ -169,9 +186,10 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
 
   // Job can be retried if it's in a failed/cancelled/timeout state
   const canRetry =
-    job.status === "FAILED" ||
-    job.status === "CANCELLED" ||
-    job.status === "TIMEOUT";
+    isRunRetryable(runStatus) &&
+    (job.status === "FAILED" ||
+      job.status === "CANCELLED" ||
+      job.status === "TIMEOUT");
 
   return (
     <div className="border-b border-border last:border-0">
@@ -251,9 +269,11 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
           {job.error_message && (
             <div className="space-y-1">
               <p className="text-xs font-medium text-destructive">Error</p>
-              <pre className="whitespace-pre-wrap text-xs text-destructive bg-destructive/10 rounded p-2 overflow-auto max-h-32">
-                {job.error_message}
-              </pre>
+              <TerminalOutput
+                text={job.error_message}
+                tone="stderr"
+                className="max-h-32"
+              />
             </div>
           )}
 
@@ -297,9 +317,7 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                   {cmd.stdout && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Output</p>
-                      <pre className="whitespace-pre-wrap text-xs bg-background border rounded p-2 overflow-auto max-h-48 font-mono">
-                        {cmd.stdout}
-                      </pre>
+                      <TerminalOutput text={cmd.stdout} className="max-h-48" />
                     </div>
                   )}
 
@@ -307,9 +325,11 @@ function JobItem({ job, runId }: { job: JobResponse; runId: number }) {
                   {cmd.stderr && (
                     <div className="space-y-1">
                       <p className="text-xs text-orange-500">Stderr</p>
-                      <pre className="whitespace-pre-wrap text-xs bg-orange-500/10 border border-orange-500/20 rounded p-2 overflow-auto max-h-48 font-mono text-orange-200">
-                        {cmd.stderr}
-                      </pre>
+                      <TerminalOutput
+                        text={cmd.stderr}
+                        tone="stderr"
+                        className="max-h-48"
+                      />
                     </div>
                   )}
                 </div>
@@ -430,9 +450,14 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
 
         {sortedJobs.length > 0 && (
           <div className="divide-y divide-border">
-            {sortedJobs.map((job) => (
-              <JobItem key={job.id} job={job} runId={runId} />
-            ))}
+              {sortedJobs.map((job) => (
+                <JobItem
+                  key={job.id}
+                  job={job}
+                  runId={runId}
+                  runStatus={runStatus}
+                />
+              ))}
           </div>
         )}
       </CardContent>

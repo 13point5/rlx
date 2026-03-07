@@ -160,11 +160,19 @@ class DatabaseTask(Task):
         duration_ms: int | None = None,
     ) -> None:
         """Update command execution result."""
-        from rlx_api.database import JobCommand
+        from rlx_api.database import CommandStatus, JobCommand
 
         with self.get_db_session() as session:
             cmd = session.query(JobCommand).filter(JobCommand.id == command_id).first()
             if cmd:
+                if (
+                    cmd.status == CommandStatus.CANCELLED
+                    and status != CommandStatus.CANCELLED
+                ):
+                    logger.info(
+                        "Skipping command result update for cancelled command %s", command_id
+                    )
+                    return
                 cmd.status = status
                 cmd.stdout = stdout
                 cmd.stderr = stderr

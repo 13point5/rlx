@@ -2,9 +2,10 @@ import {
   getAllGpuAvailability,
   getProjectBranches,
   getProject,
+  getProjectRlxConfig,
 } from "@/app/actions/api";
 import { computeGpuSummary, type ComputedGpuSummary } from "@/lib/gpu-utils";
-import type { GpuInstance, Project } from "@/lib/types";
+import type { GpuInstance, Project, RlxConfigEntry } from "@/lib/types";
 
 interface SearchParams {
   gpu?: string;
@@ -29,6 +30,25 @@ export interface ProjectDataResult {
   success: boolean;
   project?: Project;
   error?: string | null;
+}
+
+export interface ConfigsDataResult {
+  success: boolean;
+  configs: RlxConfigEntry[];
+  found: boolean;
+  error?: string | null;
+}
+
+function getInitialBranch(branchesDataResult: BranchesDataResult) {
+  if (branchesDataResult.success && branchesDataResult.branches.length > 0) {
+    const defaultBranchName = branchesDataResult.branches.includes("main")
+      ? "main"
+      : branchesDataResult.branches[0];
+
+    return `origin/${defaultBranchName}`;
+  }
+
+  return "origin/main";
 }
 
 export async function getNewRunData(
@@ -79,6 +99,32 @@ export async function getNewRunData(
     };
   }
 
+  const initialBranch = getInitialBranch(branchesDataResult);
+  const configBranch = initialBranch.startsWith("origin/")
+    ? initialBranch.slice(7)
+    : initialBranch;
+  const configsResult = await getProjectRlxConfig({
+    projectId,
+    branch: configBranch,
+  });
+
+  let configsDataResult: ConfigsDataResult;
+
+  if (configsResult.success && configsResult.data) {
+    configsDataResult = {
+      success: true,
+      configs: configsResult.data.configs,
+      found: configsResult.data.found,
+    };
+  } else {
+    configsDataResult = {
+      success: false,
+      configs: [],
+      found: false,
+      error: configsResult.error || "Failed to fetch configs",
+    };
+  }
+
   // Derive default selection from computed summary
   let selectedGpu: string | undefined;
   let selectedCount: string | undefined;
@@ -117,7 +163,9 @@ export async function getNewRunData(
   return {
     gpuDataResult,
     branchesDataResult,
+    configsDataResult,
     projectDataResult,
+    initialBranch,
     selectedGpu,
     selectedCount,
   };

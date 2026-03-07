@@ -1,3 +1,5 @@
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -5,9 +7,21 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from rlx_api.database import Job, Project, Run, RunStatus, UserSshKey
-from rlx_api.deps import CurrentUser, DbSession
+from rlx_api.database import CommandStatus, Job, JobCommand, JobStatus, Project, Run, RunStatus, UserSshKey
+from rlx_api.deps import (
+    CurrentUser,
+    DbSession,
+    get_github_connection,
+    get_valid_github_token,
+)
 from rlx_api.job_templates import create_jobs_from_templates
+from rlx_api.services import github as github_service
+from rlx_api.services.github import (
+    GitHubAPIError,
+    GitHubNoAccessError,
+    GitHubRateLimitError,
+    GitHubTokenInvalidError,
+)
 from rlx_api.services.prime_intellect import (
     DEFAULT_IMAGE,
     PrimeIntellectAPIError,
@@ -17,6 +31,7 @@ from rlx_api.services.prime_intellect import (
 )
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
+logger = logging.getLogger(__name__)
 
 
 def strip_origin_prefix(branch: str) -> str:
@@ -29,6 +44,15 @@ def strip_origin_prefix(branch: str) -> str:
     if branch.startswith("origin/"):
         return branch[7:]  # len("origin/") == 7
     return branch
+
+
+@dataclass
+class ResolvedRunConfig:
+    """Concrete config information derived from the selected rlx.toml entry."""
+
+    branch: str
+    config_path: str
+    env_vars: dict[str, str] | None
 
 
 class InstanceSelection(BaseModel):
@@ -48,7 +72,7 @@ class CreateRunRequest(BaseModel):
     project_id: int
     name: str
     branch: str
-    config_name: str  # Config name from rlx.toml (resolved at job execution time)
+    config_name: str  # Selected config name from rlx.toml
     instance: InstanceSelection
 
 
@@ -106,6 +130,208 @@ async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
     return run
 
 
+async def resolve_run_config(
+    *,
+    clerk_user_id: str,
+    project: Project,
+    branch: str,
+    config_name: str,
+    db: DbSession,
+) -> ResolvedRunConfig:
+    """
+    Resolve the selected rlx.toml entry to a concrete Prime RL launch config.
+
+    The UI selects a config by name, but the launch job needs the underlying
+    `config = "path/to/file.toml"` value.
+    """
+    clean_branch = strip_origin_prefix(branch)
+    connection = await get_github_connection(clerk_user_id, db)
+    access_token = await get_valid_github_token(connection, db)
+
+    try:
+        rlx_config = await github_service.fetch_rlx_config(
+            access_token,
+            owner=project.repo_owner,
+            repo=project.repo_name,
+            branch=clean_branch,
+        )
+    except GitHubTokenInvalidError:
+        new_token = await github_service.refresh_token(connection, db)
+        if not new_token:
+            await db.delete(connection)
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="GitHub token expired. Please reconnect your GitHub account.",
+            )
+
+        try:
+            rlx_config = await github_service.fetch_rlx_config(
+                new_token,
+                owner=project.repo_owner,
+                repo=project.repo_name,
+                branch=clean_branch,
+            )
+        except GitHubNoAccessError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+            )
+        except GitHubRateLimitError:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="GitHub API rate limit exceeded. Please try again later.",
+            )
+        except GitHubAPIError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            )
+        access_token = new_token
+    except GitHubNoAccessError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+        )
+    except GitHubRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="GitHub API rate limit exceeded. Please try again later.",
+        )
+    except GitHubAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+
+    if not rlx_config.found:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No rlx.toml found in the selected repository branch.",
+        )
+
+    selected_entry = next(
+        (entry for entry in rlx_config.configs if entry.name == config_name),
+        None,
+    )
+    if not selected_entry:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Config '{config_name}' was not found in rlx.toml for branch '{clean_branch}'.",
+        )
+
+    if not selected_entry.config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Config '{config_name}' does not define a single config path. "
+                "RLX currently launches Prime RL from the `config` field."
+            ),
+        )
+
+    try:
+        config_exists = await github_service.repo_file_exists(
+            access_token,
+            owner=project.repo_owner,
+            repo=project.repo_name,
+            path=selected_entry.config,
+            branch=clean_branch,
+        )
+    except GitHubTokenInvalidError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="GitHub token expired while validating the selected config file.",
+        )
+    except GitHubNoAccessError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+        )
+    except GitHubRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="GitHub API rate limit exceeded. Please try again later.",
+        )
+    except GitHubAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+
+    if not config_exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Config file '{selected_entry.config}' for entry '{config_name}' "
+                f"was not found in branch '{clean_branch}'."
+            ),
+        )
+
+    return ResolvedRunConfig(
+        branch=clean_branch,
+        config_path=selected_entry.config,
+        env_vars=selected_entry.env_vars,
+    )
+
+
+async def cancel_inflight_jobs_for_run(run_id: int, db: DbSession) -> list[str]:
+    """
+    Mark active jobs/commands for a run as cancelled and return Celery task IDs to revoke.
+
+    This is used when a run is terminated so the UI and worker state converge on the
+    same terminal status instead of leaving stale RUNNING rows behind.
+    """
+    now = datetime.now(timezone.utc)
+    active_job_statuses = [JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING]
+    active_command_statuses = [CommandStatus.PENDING, CommandStatus.RUNNING]
+
+    jobs_result = await db.execute(
+        select(Job).where(Job.run_id == run_id, Job.status.in_(active_job_statuses))
+    )
+    jobs = list(jobs_result.scalars().all())
+
+    task_ids: list[str] = []
+    for job in jobs:
+        if job.celery_task_id:
+            task_ids.append(job.celery_task_id)
+        job.status = JobStatus.CANCELLED
+        job.error_type = "run_terminated"
+        job.error_message = "Run terminated by user."
+        job.completed_at = now
+
+    if jobs:
+        job_ids = [job.id for job in jobs]
+        commands_result = await db.execute(
+            select(JobCommand).where(
+                JobCommand.job_id.in_(job_ids),
+                JobCommand.status.in_(active_command_statuses),
+            )
+        )
+        commands = list(commands_result.scalars().all())
+
+        for command in commands:
+            command.status = CommandStatus.CANCELLED
+            command.completed_at = now
+            if command.started_at is not None:
+                command.duration_ms = int((now - command.started_at).total_seconds() * 1000)
+
+    return task_ids
+
+
+def revoke_celery_tasks(task_ids: list[str]) -> None:
+    """Best-effort revocation of queued/running Celery tasks for a terminated run."""
+    if not task_ids:
+        return
+
+    from rlx_api.celery_app import celery_app
+
+    for task_id in task_ids:
+        try:
+            celery_app.control.revoke(task_id, terminate=True)
+        except Exception:
+            logger.warning("Failed to revoke Celery task %s", task_id, exc_info=True)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=RunResponse)
 async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     clerk_user_id = user.get("sub")
@@ -132,6 +358,14 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No SSH key found. Please generate an SSH key in Settings before creating a run.",
         )
+
+    resolved_config = await resolve_run_config(
+        clerk_user_id=clerk_user_id,
+        project=project,
+        branch=body.branch,
+        config_name=body.config_name,
+        db=db,
+    )
 
     pod_payload: dict[str, Any] = {
         "name": body.name,
@@ -198,8 +432,10 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
     # Create initial jobs for the run using templates
     ctx = {
         "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
-        "branch": strip_origin_prefix(body.branch),
+        "branch": resolved_config.branch,
         "config_name": body.config_name,
+        "config_path": resolved_config.config_path,
+        "env_vars": resolved_config.env_vars,
     }
     jobs = create_jobs_from_templates(run.id, clerk_user_id, ctx)
     for job in jobs:
@@ -290,9 +526,11 @@ async def terminate_run(run_id: int, user: CurrentUser, db: DbSession):
     except PrimeIntellectAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
+    task_ids = await cancel_inflight_jobs_for_run(run.id, db)
     run.status = RunStatus.TERMINATED
     run.updated_at = datetime.now(timezone.utc)
     await db.commit()
+    revoke_celery_tasks(task_ids)
 
     return RunTerminateResponse(status=run.status, pod_id=run.pod_id)
 
@@ -326,10 +564,20 @@ async def sync_jobs(run_id: int, user: CurrentUser, db: DbSession):
     existing_sequences = set(row[0] for row in existing_result.fetchall())
 
     # Create missing jobs using shared helper
+    resolved_config = await resolve_run_config(
+        clerk_user_id=clerk_user_id,
+        project=project,
+        branch=run.branch,
+        config_name=run.config_name,
+        db=db,
+    )
+
     ctx = {
         "repo_url": f"https://github.com/{project.repo_owner}/{project.repo_name}.git",
-        "branch": strip_origin_prefix(run.branch),
+        "branch": resolved_config.branch,
         "config_name": run.config_name,
+        "config_path": resolved_config.config_path,
+        "env_vars": resolved_config.env_vars,
     }
     new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)
 

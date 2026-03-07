@@ -1,135 +1,116 @@
-# rlx.toml Configuration
+# `rlx.toml` Configuration
 
-The `rlx.toml` file defines run configurations for your project. Place this file in the root of your repository.
+`rlx.toml` lives in the root of the user's training repo and defines the named configs shown in the RLX run form.
 
-## Overview
+## Current Launch Contract
 
-When starting a new run, RLX reads the `rlx.toml` file from your repository to populate the config dropdown. Each configuration can specify:
+Today, RLX uses the selected entry's single `config` file path to launch Prime RL.
 
-- A single combined config file, OR
-- Separate config files for inference, orchestrator, and trainer components
-- Environment variables for the run
+That means the launcher ultimately runs:
 
-## File Location
-
-```
-your-repo/
-├── rlx.toml          # <-- Place here (repository root)
-├── configs/
-│   ├── sft.toml
-│   ├── rl_grpo.toml
-│   └── ...
-└── ...
+```bash
+uv run rl @ /workspace/repo/path/to/config.toml
 ```
 
-## Format
-
-Each top-level section in `rlx.toml` defines a named configuration:
+So the currently supported shape for a runnable RLX config is:
 
 ```toml
 [config-name]
-description = "Optional description shown in dropdown"
-config = "path/to/config.toml"           # Single combined config
-inference = "path/to/inference.toml"     # OR separate configs
-orchestrator = "path/to/orchestrator.toml"
-trainer = "path/to/trainer.toml"
-env_vars = { KEY = "value" }             # Optional environment variables
+description = "Optional description shown in the UI"
+config = "path/to/config.toml"
 ```
 
-### Fields
+## Example
 
-| Field          | Type   | Description                                        |
-| -------------- | ------ | -------------------------------------------------- |
-| `description`  | string | Optional. Displayed in the config dropdown         |
-| `config`       | string | Path to a single combined config file              |
-| `inference`    | string | Path to inference config file                      |
-| `orchestrator` | string | Path to orchestrator config file                   |
-| `trainer`      | string | Path to trainer config file                        |
-| `env_vars`     | table  | Optional. Environment variables as key-value pairs |
-
-## Examples
-
-### Simple SFT Configuration
+From `/Users/13point5/projects/swe-grep-oss/rlx.toml`:
 
 ```toml
-[sft-baseline]
-description = "Supervised fine-tuning baseline"
-config = "configs/sft.toml"
+[grpo-f1]
+description = "GRPO reinforcement learning with just the F1 reward"
+config = "configs/grpo-f1.toml"
 ```
 
-### RL with Single Config
+That resolves on the pod to:
+
+```bash
+uv run rl @ /workspace/repo/configs/grpo-f1.toml
+```
+
+The referenced config file in that repo is:
 
 ```toml
-[rl-grpo]
-description = "GRPO reinforcement learning"
-config = "configs/rl_grpo.toml"
+max_steps = 20
+seq_len = 4096
+
+[deployment]
+num_train_gpus = 1
+num_infer_gpus = 1
+gpus_per_node = 2
+
+[model]
+name = "Qwen/Qwen3-4B-Instruct-2507"
+
+[trainer.optim]
+lr = 1e-5
+weight_decay = 0.0
+
+[trainer.model.lora]
+rank = 8
+alpha = 32
+
+[orchestrator]
+batch_size = 128
+rollouts_per_example = 4
+
+[orchestrator.sampling]
+max_tokens = 1024
+
+[[orchestrator.env]]
+id = "swe-grep-oss"
+name = "swe-grep-oss"
+args = { dataset_name = "swe-bench-lite" }
+
+[orchestrator.val]
+interval = 10
+num_examples = 16
+
+[inference]
+gpu_memory_utilization = 0.7
+
+[inference.model]
+tool_call_parser = "hermes"
+max_model_len = 4096
 ```
 
-### RL with Separate Component Configs
+## File Location
 
-```toml
-[rl-distributed]
-description = "Distributed RL training"
-inference = "configs/inference/grpo.toml"
-orchestrator = "configs/orchestrator/distributed.toml"
-trainer = "configs/trainer/grpo.toml"
+```text
+your-repo/
+├── rlx.toml
+├── configs/
+│   └── train.toml
+└── ...
 ```
 
-### With Environment Variables (Inline)
+## Supported Fields
 
-```toml
-[sft-wandb]
-description = "SFT with W&B logging"
-config = "configs/sft.toml"
-env_vars = { WANDB_PROJECT = "my-sft-project", WANDB_ENTITY = "my-team" }
-```
+RLX currently parses these fields from each `rlx.toml` entry:
 
-### With Environment Variables (Expanded)
+| Field | Description |
+| --- | --- |
+| `description` | Optional label shown in the UI |
+| `config` | The single config file path used by the current launcher |
+| `inference` | Parsed but not used by the current single-file launcher |
+| `orchestrator` | Parsed but not used by the current single-file launcher |
+| `trainer` | Parsed but not used by the current single-file launcher |
+| `env_vars` | Parsed and forwarded into the final Prime RL launch job environment |
 
-```toml
-[rl-production]
-description = "Production RL training"
-config = "configs/rl_prod.toml"
-
-[rl-production.env_vars]
-WANDB_PROJECT = "rl-production"
-WANDB_ENTITY = "my-team"
-NUM_WORKERS = "16"
-DEBUG = "false"
-```
-
-### Complete Example
-
-```toml
-# rlx.toml - RLX run configurations
-
-[sft-baseline]
-description = "Supervised fine-tuning baseline"
-config = "configs/sft.toml"
-
-[sft-large]
-description = "SFT with larger batch size"
-config = "configs/sft_large.toml"
-env_vars = { BATCH_SIZE = "64" }
-
-[rl-grpo]
-description = "GRPO reinforcement learning"
-config = "configs/rl_grpo.toml"
-
-[rl-grpo-distributed]
-description = "Distributed GRPO with separate configs"
-inference = "configs/inference/grpo.toml"
-orchestrator = "configs/orchestrator/multi_node.toml"
-trainer = "configs/trainer/grpo.toml"
-
-[rl-grpo-distributed.env_vars]
-WANDB_PROJECT = "distributed-rl"
-NUM_NODES = "4"
-```
-
-## Notes
+## Important Notes
 
 - Config paths are relative to the repository root
-- The branch selected in the UI determines which version of `rlx.toml` is read
-- If `rlx.toml` is not found, the config dropdown will show instructions to create one
-- At least one config path must be provided when starting a run (validated at run creation)
+- The selected branch determines which version of `rlx.toml` is read
+- RLX validates that the referenced `config` file exists on the selected branch before it provisions a pod
+- The current Prime RL launch path requires `config`, not just split `trainer` / `orchestrator` / `inference` fields
+- If an entry defines `env_vars`, RLX passes them to job `8` when it launches `uv run rl @ ...`
+- If `rlx.toml` is missing, the UI shows guidance and does not offer selectable configs
+- If the selected entry does not expose a single `config` path, run creation should reject it

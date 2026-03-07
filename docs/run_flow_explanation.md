@@ -1,534 +1,214 @@
-# Run Flow: Creation, Status Updates, and Display
+# Run Flow: Creation, Activation, Jobs, and Display
 
-This document explains how runs are created, how their status is tracked and updated, and how they're displayed across the application.
+This document describes the current run lifecycle in RLX.
+
+For the broader system map, see `docs/architecture_walkthrough.md`.
 
 ## Overview
 
-A **Run** represents a GPU compute instance provisioned through Prime Intellect API. The system tracks runs from creation through their lifecycle (provisioning → active → terminated).
+A run in RLX is:
 
-## Database Schema
+- a Prime Intellect pod provisioned for a selected project
+- plus the metadata needed to identify the branch and selected `rlx.toml` config name
+- plus a sequence of Celery-managed jobs executed on that pod over SSH
 
-The `Run` model (`apps/api/src/rlx_api/database.py`) stores:
+The important current detail is that the selected `rlx.toml` entry is resolved to a concrete config file path before the launch job is created. The final launch command uses Prime RL's config-file syntax:
 
-```99:126:apps/api/src/rlx_api/database.py
-class Run(Base):
-    __tablename__ = "runs"
-
-    id = Column(Integer, primary_key=True)
-    project_id = Column(Integer, nullable=False, index=True)
-    clerk_user_id = Column(String, nullable=False, index=True)
-    name = Column(String, nullable=False)
-    branch = Column(String, nullable=False)
-    config_path = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="provisioning")
-    provider = Column(String, nullable=False)
-    region = Column(String, nullable=False)
-    data_center = Column(String)
-    country = Column(String)
-    gpu_type = Column(String, nullable=False)
-    gpu_count = Column(Integer, nullable=False)
-    security = Column(String, nullable=False)
-    cloud_id = Column(String, nullable=False)
-    pod_id = Column(String, nullable=False)
-    is_spot = Column(Boolean, nullable=False, default=False)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+```bash
+uv run rl @ /workspace/repo/path/to/config.toml
 ```
 
-**Key Fields:**
-
-- `status`: Current run status (PROVISIONING, ACTIVE, TERMINATED, ERROR, etc.)
-- `pod_id`: Prime Intellect pod identifier (used to query status)
-- `updated_at`: Timestamp of last status update
-
-## Flow Diagrams
-
-### Run Creation Flow
-
-**Mermaid Diagram** (renders in GitHub, VS Code with Mermaid extension, etc.):
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend as Frontend<br/>(new-run-layout.tsx)
-    participant ServerAction as Server Action<br/>(api.ts)
-    participant Backend as Backend API<br/>(routers/runs.py)
-    participant DB as PostgreSQL<br/>(runs table)
-    participant PI as Prime Intellect API
-
-    User->>Frontend: Fill form & click "Start Run"
-    Frontend->>ServerAction: startRun({projectId, name, branch, config, instance})
-    ServerAction->>Backend: POST /api/runs
-    Backend->>DB: Validate project exists
-    Backend->>PI: create_pod(pod_payload)
-    PI-->>Backend: {pod_id, status: "PROVISIONING"}
-    Backend->>DB: INSERT Run (status, pod_id, ...)
-    DB-->>Backend: Run created
-    Backend-->>ServerAction: {id, status, ...}
-    ServerAction-->>Frontend: {success: true, runId}
-    Frontend->>User: Redirect to /projects/{id}/runs/{runId}
-```
-
-**ASCII Diagram**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         RUN CREATION FLOW                                │
-└─────────────────────────────────────────────────────────────────────────┘
-
-User          Frontend          Server Action      Backend API      PostgreSQL    Prime Intellect
-(new-run)     (api.ts)          (runs.py)          (runs table)     API
-   │               │                  │                  │               │               │
-   │ 1. Submit     │                  │                  │               │               │
-   │    form       │                  │                  │               │               │
-   ├──────────────>│                  │                  │               │               │
-   │               │ 2. startRun()    │                  │               │               │
-   │               ├─────────────────>│                  │               │               │
-   │               │                  │ 3. POST /api/runs│               │               │
-   │               │                  ├─────────────────>│               │               │
-   │               │                  │                  │ 4. Validate  │               │
-   │               │                  │                  │    project    │               │
-   │               │                  │                  ├──────────────>│               │
-   │               │                  │                  │               │               │
-   │               │                  │                  │ 5. create_pod│               │
-   │               │                  │                  ├───────────────────────────────>│
-   │               │                  │                  │               │               │
-   │               │                  │                  │ 6. {pod_id,   │               │
-   │               │                  │                  │    status}    │               │
-   │               │                  │                  │<───────────────────────────────┤
-   │               │                  │                  │               │               │
-   │               │                  │                  │ 7. INSERT Run│               │
-   │               │                  │                  ├──────────────>│               │
-   │               │                  │                  │               │               │
-   │               │                  │                  │ 8. Run saved │               │
-   │               │                  │                  │<──────────────┤               │
-   │               │                  │                  │               │               │
-   │               │                  │ 9. {id, status}  │               │               │
-   │               │                  │<─────────────────┤               │               │
-   │               │ 10. {runId}      │                  │               │               │
-   │               │<─────────────────┤                  │               │               │
-   │               │                  │                  │               │               │
-   │ 11. Redirect  │                  │                  │               │               │
-   │    to run page│                  │                  │               │               │
-   │<──────────────┤                  │                  │               │               │
-   │               │                  │                  │               │               │
-```
-
-### Status Polling Flow (Run Page)
-
-**Mermaid Diagram**:
-
-```mermaid
-sequenceDiagram
-    participant Page as Run Page<br/>(page.tsx)
-    participant Panel as RunStatusPanel<br/>(Client Component)
-    participant ServerAction as Server Action<br/>(api.ts)
-    participant Backend as Backend API<br/>(routers/runs.py)
-    participant DB as PostgreSQL<br/>(runs table)
-    participant PI as Prime Intellect API
-
-    Page->>ServerAction: getRun(runId)
-    ServerAction->>Backend: GET /api/runs/{runId}
-    Backend->>DB: SELECT Run WHERE id = runId
-    DB-->>Backend: Run (with DB status)
-    Backend-->>ServerAction: RunResponse
-    ServerAction-->>Page: Run data
-    Page->>Panel: Render with initialStatus
-
-    loop Every 5 seconds (until TERMINATED)
-        Panel->>ServerAction: getRunStatus(runId)
-        ServerAction->>Backend: GET /api/runs/{runId}/status
-        Backend->>DB: SELECT Run WHERE id = runId
-        DB-->>Backend: Run (with pod_id)
-
-        alt Status is TERMINATED
-            Backend-->>ServerAction: {status: "TERMINATED"}
-        else Status is active
-            Backend->>PI: fetch_pod_status([pod_id])
-            PI-->>Backend: {status, sshConnection, ip}
-            Backend->>DB: UPDATE Run SET status=?, updated_at=?
-            DB-->>Backend: Updated
-            Backend-->>ServerAction: {status, ssh_connection, ip}
-        end
-
-        ServerAction-->>Panel: StatusResponse
-        Panel->>Panel: Update UI (badge, SSH connection)
-    end
-```
-
-**ASCII Diagram**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      STATUS POLLING FLOW (Run Page)                      │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Run Page      RunStatusPanel    Server Action    Backend API    PostgreSQL    Prime Intellect
-(page.tsx)    (Client)          (api.ts)         (runs.py)      (runs table)  API
-   │               │                 │                │               │               │
-   │ 1. Load run   │                 │                │               │               │
-   │    details    │                 │                │               │               │
-   ├──────────────>│                 │                │               │               │
-   │               │                 │ 2. getRun()    │               │               │
-   │               │                 ├───────────────>│               │               │
-   │               │                 │                │ 3. SELECT Run │               │
-   │               │                 │                ├──────────────>│               │
-   │               │                 │                │               │               │
-   │               │                 │ 4. RunResponse │               │               │
-   │               │                 │<───────────────┤               │               │
-   │               │                 │                │               │               │
-   │ 5. Render     │                 │                │               │               │
-   │    Panel      │                 │                │               │               │
-   ├──────────────>│                 │                │               │               │
-   │               │                 │                │               │               │
-   │               │                 │                │               │               │
-   │               │ 6. React Query  │                │               │               │
-   │               │    starts polling│                │               │               │
-   │               │    (every 5s)   │                │               │               │
-   │               │                 │                │               │               │
-   │               │                 │                │               │               │
-   │               │ 7. getRunStatus │                │               │               │
-   │               ├─────────────────>│                │               │               │
-   │               │                 │ 8. GET /status │               │               │
-   │               │                 ├───────────────>│               │               │
-   │               │                 │                │ 9. SELECT Run │               │
-   │               │                 │                ├──────────────>│               │
-   │               │                 │                │               │               │
-   │               │                 │                │               │               │
-   │               │                 │                │ 10. Check    │               │
-   │               │                 │                │    status    │               │
-   │               │                 │                │               │               │
-   │               │                 │                │               │               │
-   │               │                 │                │ 11. fetch_pod │               │
-   │               │                 │                │    _status    │               │
-   │               │                 │                ├───────────────────────────────>│
-   │               │                 │                │               │               │
-   │               │                 │                │ 12. {status,   │               │
-   │               │                 │                │    ssh, ip}   │               │
-   │               │                 │                │<───────────────────────────────┤
-   │               │                 │                │               │               │
-   │               │                 │                │ 13. UPDATE Run│               │
-   │               │                 │                │    SET status │               │
-   │               │                 │                ├──────────────>│               │
-   │               │                 │                │               │               │
-   │               │                 │ 14. StatusResp │               │               │
-   │               │                 │<───────────────┤               │               │
-   │               │                 │                │               │               │
-   │               │ 15. Update UI   │                │               │               │
-   │               │    (badge, SSH) │                │               │               │
-   │               │<────────────────┤                │               │               │
-   │               │                 │                │               │               │
-   │               │ [Repeat every 5s│                │               │               │
-   │               │  until TERMINATED]               │               │               │
-   │               │                 │                │               │               │
-```
-
-### Project Page Runs Display
-
-**Mermaid Diagram**:
-
-```mermaid
-sequenceDiagram
-    participant Page as Project Page<br/>(page.tsx)
-    participant ServerAction as Server Actions<br/>(api.ts)
-    participant Backend as Backend API<br/>(routers/runs.py)
-    participant DB as PostgreSQL<br/>(runs table)
-    participant PI as Prime Intellect API
-
-    Page->>ServerAction: getProjectRuns(projectId)
-    ServerAction->>Backend: GET /api/runs?project_id=X
-    Backend->>DB: SELECT Run WHERE project_id = X ORDER BY created_at DESC
-    DB-->>Backend: List of Runs
-    Backend-->>ServerAction: [Run, Run, ...]
-    ServerAction-->>Page: Runs array
-
-    Page->>Page: Extract run IDs [1, 2, 3, ...]
-    Page->>ServerAction: getRunStatuses([1, 2, 3, ...])
-    ServerAction->>Backend: GET /api/runs/status?run_ids=1,2,3...
-    Backend->>DB: SELECT Run WHERE id IN (1,2,3...)
-    DB-->>Backend: Runs with pod_ids
-
-    Backend->>Backend: Filter terminated runs
-    Backend->>PI: fetch_pod_status([pod_id1, pod_id2, ...])
-    PI-->>Backend: [{pod_id: status, sshConnection, ip}, ...]
-
-    Backend->>DB: UPDATE Run SET status=?, updated_at=? (for each run)
-    DB-->>Backend: Updated
-
-    Backend-->>ServerAction: {runId1: {status, ssh_connection, ip}, ...}
-    ServerAction-->>Page: Status map {runId: status}
-    Page->>Page: Display runs table with live statuses
-```
-
-**ASCII Diagram**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    PROJECT PAGE RUNS DISPLAY                              │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Project Page    Server Actions    Backend API      PostgreSQL      Prime Intellect
-(page.tsx)      (api.ts)          (runs.py)        (runs table)    API
-   │                 │                 │                 │                 │
-   │ 1. Load        │                 │                 │                 │
-   │    project     │                 │                 │                 │
-   │    & runs      │                 │                 │                 │
-   ├────────────────>│                 │                 │                 │
-   │                 │ 2. GET /runs?  │                 │                 │
-   │                 │    project_id=X │                 │                 │
-   │                 ├────────────────>│                 │                 │
-   │                 │                 │ 3. SELECT Run   │                 │
-   │                 │                 │    WHERE        │                 │
-   │                 │                 │    project_id=X │                 │
-   │                 │                 ├────────────────>│                 │
-   │                 │                 │                 │                 │
-   │                 │ 4. [Run, ...]   │                 │                 │
-   │                 │<────────────────┤                 │                 │
-   │                 │                 │                 │                 │
-   │ 5. Runs array   │                 │                 │                 │
-   │<────────────────┤                 │                 │                 │
-   │                 │                 │                 │                 │
-   │ 6. Extract IDs  │                 │                 │                 │
-   │    [1, 2, 3...] │                 │                 │                 │
-   │                 │                 │                 │                 │
-   │ 7. getRunStatuses│                │                 │                 │
-   │    ([1,2,3...]) │                 │                 │                 │
-   ├────────────────>│                 │                 │                 │
-   │                 │ 8. GET /status? │                 │                 │
-   │                 │    run_ids=1,2,3│                 │                 │
-   │                 ├────────────────>│                 │                 │
-   │                 │                 │ 9. SELECT Run   │                 │
-   │                 │                 │    WHERE id IN  │                 │
-   │                 │                 ├────────────────>│                 │
-   │                 │                 │                 │                 │
-   │                 │                 │ 10. Runs with   │                 │
-   │                 │                 │     pod_ids     │                 │
-   │                 │                 │<────────────────┤                 │
-   │                 │                 │                 │                 │
-   │                 │                 │ 11. Filter      │                 │
-   │                 │                 │    terminated   │                 │
-   │                 │                 │                 │                 │
-   │                 │                 │ 12. fetch_pod   │                 │
-   │                 │                 │    _status      │                 │
-   │                 │                 │    ([pod_id1,  │                 │
-   │                 │                 │     pod_id2...])│                 │
-   │                 │                 ├──────────────────────────────────>│
-   │                 │                 │                 │                 │
-   │                 │                 │ 13. [{status,   │                 │
-   │                 │                 │     ssh, ip},  │                 │
-   │                 │                 │     ...]       │                 │
-   │                 │                 │<──────────────────────────────────┤
-   │                 │                 │                 │                 │
-   │                 │                 │ 14. UPDATE Run  │                 │
-   │                 │                 │    (for each)   │                 │
-   │                 │                 ├────────────────>│                 │
-   │                 │                 │                 │                 │
-   │                 │ 15. Status map  │                 │                 │
-   │                 │    {runId:      │                 │                 │
-   │                 │     status}     │                 │                 │
-   │                 │<────────────────┤                 │                 │
-   │                 │                 │                 │                 │
-   │ 16. Status map  │                 │                 │                 │
-   │<────────────────┤                 │                 │                 │
-   │                 │                 │                 │                 │
-   │ 17. Display     │                 │                 │                 │
-   │    runs table   │                 │                 │                 │
-   │    with live    │                 │                 │                 │
-   │    statuses     │                 │                 │                 │
-   │                 │                 │                 │                 │
-```
-
-## Detailed Flow Breakdown
-
-### 1. Creating a New Run
-
-**Frontend (`apps/web/app/(auth)/projects/[id]/runs/new/new-run-layout.tsx`):**
-
-1. User fills form: name, branch, config path, GPU selection
-2. On "Start Run" click, calls `startRun()` server action
-3. Server action (`apps/web/app/actions/api.ts`) sends POST to `/api/runs`
-
-**Backend (`apps/api/src/rlx_api/routers/runs.py` - `create_run`):**
-
-1. Validates project exists and belongs to user
-2. Validates user has an SSH key configured
-3. Builds pod payload with GPU specs and SSH key ID
-4. Calls Prime Intellect API `create_pod()` (`apps/api/src/rlx_api/services/prime_intellect.py`)
-5. Receives `pod_id` and initial `status` from Prime Intellect
-6. Creates `Run` record in database with:
-   - Status from Prime Intellect response (or "PROVISIONING" default)
-   - All run metadata (name, branch, config, GPU specs, etc.)
-   - `pod_id` for future status queries
-7. Creates initial jobs from templates (`apps/api/src/rlx_api/job_templates.py`):
-   - Clone user's project repo
-   - List files in repo
-   - Clone prime-rl framework
-   - Install uv package manager
-   - Install prime-rl dependencies
-   - Install user's verifiers environment
-   - Verify installation
-8. Returns `RunResponse` to frontend
-
-**Frontend:**
-
-- Receives run ID
-- Redirects to `/projects/{projectId}/runs/{runId}`
-
-### 2. Viewing Run Status (Individual Run Page)
-
-**Initial Load (`apps/web/app/(auth)/projects/[id]/runs/[runId]/page.tsx`):**
-
-1. Server-side: Calls `getRun(runId)` to fetch run details
-2. Passes `initialStatus` to `RunStatusPanel` component
-
-**Status Polling (`apps/web/app/(auth)/projects/[id]/runs/[runId]/run-status-panel.tsx`):**
-
-1. Uses React Query (`useQuery`) with:
-   - Query key: `["run-status", runId]`
-   - Polling interval: 5 seconds
-   - Stops polling when status is "TERMINATED"
-2. Each poll calls `getRunStatus(runId)` server action
-3. Server action calls `GET /api/runs/{runId}/status`
-
-**Backend (`apps/api/src/rlx_api/routers/runs.py` - `get_run_status`):**
-
-1. Fetches run from database
-2. If status is "TERMINATED", returns immediately (no API call)
-3. Otherwise, calls Prime Intellect `fetch_pod_status([pod_id])`
-4. Extracts status, SSH connection, and IP from response
-5. **Updates database** with new status and `updated_at` timestamp
-6. Returns `RunStatusResponse` with status, SSH connection, and IP
-
-**Frontend:**
-
-- Updates UI with new status badge
-- Displays SSH connection string when available
-- Shows error message if API call fails (with last known status)
-
-### 3. Project Page Runs Display
-
-**Initial Load (`apps/web/app/(auth)/projects/[id]/page.tsx`):**
-
-1. Server-side: Calls `getProjectRuns(projectId)` to fetch all runs
-2. Extracts run IDs from results
-3. Calls `getRunStatuses(runIds)` to batch-fetch live statuses
-
-**Batch Status Fetch (`apps/api/src/rlx_api/routers/runs.py` - `get_runs_status`):**
-
-1. Receives list of run IDs
-2. Fetches runs from database
-3. Filters out terminated runs (returns DB status immediately)
-4. Collects `pod_id`s from active runs
-5. Calls Prime Intellect `fetch_pod_status(pod_ids)` with all IDs
-6. Maps Prime Intellect responses to runs by `pod_id`
-7. **Updates database** for each run with new status
-8. Returns `dict[int, RunStatusItem]` mapping run ID to status
-
-**Frontend:**
-
-- Displays runs table
-- Shows live status from status map (falls back to DB status)
-- Status badges update based on current status
-
-## Status Update Mechanism
-
-### Database Updates
-
-Status is updated in the database in two places:
-
-1. **Individual status endpoint** (`get_run_status`):
-
-   ```python
-   run.status = status_value
-   run.updated_at = datetime.now(timezone.utc)
-   await db.commit()
-   ```
-
-2. **Batch status endpoint** (`get_runs_status`):
-   ```python
-   run.status = status_value
-   run.updated_at = datetime.now(timezone.utc)
-   # ... for each run
-   await db.commit()
-   ```
-
-### Status Values
-
-Status values come from Prime Intellect API:
-
-- `PROVISIONING`: Pod is being created
-- `PENDING`: Pod is queued
-- `ACTIVE`: Pod is running (SSH connection available)
-- `STOPPED`: Pod is stopped
-- `ERROR`: Pod creation/operation failed
-- `TERMINATED`: Pod has been deleted
-
-### Polling Behavior
-
-**Run Page (`RunStatusPanel`):**
-
-- Polls every 5 seconds
-- Stops when status is "TERMINATED"
-- Handles errors gracefully (shows last known status)
-- Uses React Query for automatic retries and caching
-
-**Project Page:**
-
-- Fetches status once on initial load (server-side)
-- No client-side polling (static page)
-- Status may be stale until page refresh
-
-## Key Components
+## Run Record
+
+The `Run` model stores:
+
+- `project_id`
+- `clerk_user_id`
+- `name`
+- `branch`
+- `config_name`
+- provisioned instance metadata:
+  - `provider`
+  - `region`
+  - `data_center`
+  - `country`
+  - `gpu_type`
+  - `gpu_count`
+  - `security`
+  - `cloud_id`
+  - `pod_id`
+  - `is_spot`
+- `status`
+- `ssh_connection` once the pod becomes active
+
+The resolved config file path is used for job creation and launch, not for the main run display.
+
+## 1. Run Creation Flow
 
 ### Frontend
 
-- **`new-run-layout.tsx`**: Form for creating runs
-- **`run-status-panel.tsx`**: Client component that polls and displays status
-- **`page.tsx` (run)**: Server component that loads initial run data
-- **`page.tsx` (project)**: Server component that lists all runs
+The new-run page:
+
+1. loads project metadata
+2. loads branches from GitHub
+3. loads all Prime Intellect GPU availability
+4. loads `rlx.toml` from the selected branch
+5. lets the user pick a config entry by name
+
+When the user clicks `Start Run`, the frontend sends:
+
+- `project_id`
+- `name`
+- `branch`
+- `config_name`
+- selected instance metadata
 
 ### Backend
 
-- **`routers/runs.py`**: API endpoints for run CRUD and status
-- **`services/prime_intellect.py`**: Prime Intellect API client
-- **`database.py`**: Run model definition
+`POST /api/runs` does the following:
 
-### API Endpoints
+1. validates project ownership
+2. validates the user has a configured SSH key
+3. strips the `origin/` prefix from the branch for Git operations
+4. resolves the selected `config_name` against `rlx.toml` in the selected branch
+5. requires that the selected entry expose a single `config` file path
+6. validates that the referenced config file actually exists on that branch
+7. provisions the Prime Intellect pod
+8. inserts the `Run`
+9. inserts the default `Job` sequence for that run
 
-- `POST /api/runs`: Create new run
-- `GET /api/runs/{run_id}`: Get run details
-- `GET /api/runs/{run_id}/status`: Get live status (reads from DB)
-- `GET /api/runs/status?run_ids=...`: Batch get statuses (reads from DB)
-- `GET /api/runs?project_id=X`: List runs for project
-- `POST /api/runs/{run_id}/terminate`: Terminate run
-- `POST /api/runs/{run_id}/sync-jobs`: Add missing jobs from current template to existing run
+### Why `config_name` and `config` both matter
 
-## Error Handling
+- `config_name` is the stable user-facing selection
+- `config` is the concrete file path Prime RL actually launches with
 
-### Prime Intellect API Errors
+Example from `/Users/13point5/projects/swe-grep-oss/rlx.toml`:
 
-When Prime Intellect API fails:
+```toml
+[grpo-f1]
+description = "GRPO reinforcement learning with just the F1 reward"
+config = "configs/grpo-f1.toml"
+```
 
-- Backend catches `PrimeIntellectAPIError`
-- Returns HTTP error with details
-- Frontend shows error message
-- For status endpoints, includes `last_known_status` and `last_updated_at` in error payload
+This means the launch job will ultimately target:
 
-### Database Status Fallback
+```bash
+uv run rl @ /workspace/repo/configs/grpo-f1.toml
+```
 
-- If Prime Intellect API is unavailable, frontend uses database status
-- Project page shows DB status if batch fetch fails
-- Run page shows last known status on error
+## 2. Default Job Sequence
 
-## Performance Considerations
+When a run is created, RLX seeds these jobs:
 
-1. **Batch Status Fetching**: Project page uses batch endpoint to avoid N+1 queries
-2. **Terminated Run Optimization**: Terminated runs skip Prime Intellect API calls
-3. **Polling Interval**: 5-second interval balances freshness vs. API load
-4. **Database Updates**: Status updates happen synchronously during status fetches (ensures consistency)
+| Sequence | Type | Purpose |
+| --- | --- | --- |
+| 0 | `CLONE_REPO` | Clone the user repo to `/workspace/repo` |
+| 1 | `LIST_FILES` | List files in `/workspace/repo` |
+| 2 | `CLONE_REPO` | Clone `PrimeIntellect-ai/prime-rl` to `/workspace/prime-rl` |
+| 3 | `CUSTOM_COMMAND` | Install `uv` |
+| 4 | `CUSTOM_COMMAND` | Run `uv sync --all-extras` inside `prime-rl` |
+| 5 | `CUSTOM_COMMAND` | Run `uv pip install -e /workspace/repo` |
+| 6 | `CUSTOM_COMMAND` | Verify `import prime_rl` |
+| 7 | `CUSTOM_COMMAND` | Print `/workspace/repo/rlx.toml` |
+| 8 | `CUSTOM_COMMAND` | Launch Prime RL with the resolved config path |
+
+The final launch job uses the config path from the selected `rlx.toml` entry.
+
+## 3. Pod Activation Flow
+
+Run activation is handled by Celery Beat, not by frontend polling.
+
+### Background status loop
+
+`check_pending_run_statuses` runs periodically and:
+
+1. finds runs in `PENDING` or `PROVISIONING`
+2. calls Prime Intellect for their current pod status
+3. updates `Run.status`
+4. stores `Run.ssh_connection` when the pod becomes `ACTIVE`
+5. triggers `on_pod_ready`
+
+### Why this matters
+
+The run detail page can be closed. Jobs still start because activation is worker-driven.
+
+## 4. Job Execution Flow
+
+Once a run is `ACTIVE`:
+
+1. `on_pod_ready` queues the first pending job
+2. the worker executes that job over SSH
+3. on success, `start_next_job_for_run()` queues the next one
+4. on failure, the sequence stops
+5. the user can retry the failed job
+
+Each executed command is recorded in `JobCommand` with:
+
+- stdout
+- stderr
+- exit code
+- duration
+
+That is what powers the run page's job log UI.
+
+Important current limitation:
+
+- for long-running commands, RLX persists `stdout` / `stderr` only after the SSH command returns
+- the jobs panel polls status while a job is active, but it does not stream partial command output yet
+
+## 5. Status Display Flow
+
+### Run page
+
+The run page:
+
+1. fetches the run record server-side
+2. renders the status panel with the last known status
+3. polls `GET /api/runs/{run_id}/status` from the client
+
+Important detail:
+
+- that endpoint reads from the database only
+- it does not call Prime Intellect directly
+
+### Jobs panel
+
+The jobs panel:
+
+1. polls `GET /api/jobs?run_id=...` while jobs are active
+2. sorts jobs by `sequence`
+3. expands into `GET /api/jobs/{job_id}` for detailed command logs
+4. allows retrying failed jobs
+5. allows syncing missing template jobs into older runs
+
+## 6. Config-Path Launch Contract
+
+RLX currently expects the selected `rlx.toml` entry to provide a single `config` field.
+
+That supports example repos like `/Users/13point5/projects/swe-grep-oss`, where:
+
+- `rlx.toml` maps a friendly name like `grpo-f1`
+- to a concrete file like `configs/grpo-f1.toml`
+
+The launch job resolves that path onto the pod as:
+
+```text
+/workspace/repo/configs/grpo-f1.toml
+```
+
+and runs:
+
+```bash
+source $HOME/.local/bin/env && uv run rl @ /workspace/repo/configs/grpo-f1.toml
+```
+
+## 7. Current Limits
+
+The current launcher is intentionally narrow:
+
+- it uses a single `config` file path
+- it does not yet launch from split `trainer` / `orchestrator` / `inference` config triplets
+- it does forward `env_vars` from the selected `rlx.toml` entry into the final launch job
+- it does not yet inject stored W&B secrets into the environment automatically
+
+That keeps the first Prime RL launch path aligned with the example repo and the existing UI.

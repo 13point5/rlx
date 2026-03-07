@@ -694,7 +694,7 @@ export async function startRun(input: {
   projectId: number;
   name: string;
   branch: string;
-  configName: string; // Config name from rlx.toml (resolved at job execution time)
+  configName: string; // Selected config name from rlx.toml
   instance: RunInstanceSelection & { instanceId: string };
 }): Promise<{
   success: boolean;

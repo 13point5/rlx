@@ -2,8 +2,8 @@
 
 import {
   useCallback,
-  useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -23,7 +23,11 @@ import {
 } from "@/app/actions/api";
 import { RunFields } from "./run-fields";
 import type { ConfigsState } from "./run-fields";
-import type { GpuDataResult, BranchesDataResult } from "./new-run-data";
+import type {
+  GpuDataResult,
+  BranchesDataResult,
+  ConfigsDataResult,
+} from "./new-run-data";
 
 const GpuSelection = dynamic(
   () =>
@@ -45,6 +49,8 @@ interface NewRunLayoutProps {
   projectId: number;
   gpuDataResult: GpuDataResult;
   branchesDataResult: BranchesDataResult;
+  configsDataResult: ConfigsDataResult;
+  initialBranch: string;
   repoOwner: string;
   repoName: string;
   selectedGpu?: string;
@@ -56,10 +62,27 @@ type SelectedInstanceState = {
   instance: GpuInstance & { instanceId: string };
 };
 
+function getDefaultConfig(configs: RlxConfigEntry[]) {
+  return configs.find((config) => config.config) ?? configs[0] ?? null;
+}
+
+function toConfigsState(configsDataResult: ConfigsDataResult): ConfigsState {
+  return {
+    configs: configsDataResult.configs,
+    found: configsDataResult.found,
+    isLoading: false,
+    error: configsDataResult.success
+      ? null
+      : (configsDataResult.error ?? "Failed to load configs"),
+  };
+}
+
 export function NewRunLayout({
   projectId,
   gpuDataResult: initialGpuDataResult,
   branchesDataResult: initialBranchesDataResult,
+  configsDataResult: initialConfigsDataResult,
+  initialBranch,
   repoOwner,
   repoName,
   selectedGpu: initialSelectedGpu,
@@ -87,28 +110,13 @@ export function NewRunLayout({
   const [selectedCount, setSelectedCount] = useState(initialSelectedCount);
   const [selectionState, setSelectionState] =
     useState<SelectedInstanceState | null>(null);
-
-  // Compute initial default branch from server-fetched data
-  const initialDefaultBranch = (() => {
-    if (
-      initialBranchesDataResult.success &&
-      initialBranchesDataResult.branches.length > 0
-    ) {
-      const defaultBranchName = initialBranchesDataResult.branches.includes(
-        "main"
-      )
-        ? "main"
-        : initialBranchesDataResult.branches[0];
-      return `origin/${defaultBranchName}`;
-    }
-    return "origin/main"; // Fallback
-  })();
+  const configRequestIdRef = useRef(0);
 
   // Form state
   const [runName, setRunName] = useState("");
-  const [branch, setBranch] = useState(initialDefaultBranch);
+  const [branch, setBranch] = useState(initialBranch);
   const [selectedConfig, setSelectedConfig] = useState<RlxConfigEntry | null>(
-    null
+    () => getDefaultConfig(initialConfigsDataResult.configs)
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -131,13 +139,10 @@ export function NewRunLayout({
       : (initialBranchesDataResult.error ?? "Failed to load branches"),
   });
 
-  // Configs state - fetched when branch changes
-  const [configsState, setConfigsState] = useState<ConfigsState>({
-    configs: [],
-    found: false,
-    isLoading: true,
-    error: null,
-  });
+  // Configs state - initial branch is fetched on the server, later changes load on demand.
+  const [configsState, setConfigsState] = useState<ConfigsState>(() =>
+    toConfigsState(initialConfigsDataResult)
+  );
 
   // Fetch more branches (for pagination only, initial data comes from server)
   const fetchMoreBranches = useCallback(
@@ -177,7 +182,14 @@ export function NewRunLayout({
   // Fetch configs when branch changes
   const fetchConfigs = useCallback(
     async (branchName: string) => {
-      setConfigsState((prev) => ({ ...prev, isLoading: true, error: null }));
+      const requestId = configRequestIdRef.current + 1;
+      configRequestIdRef.current = requestId;
+      setSelectedConfig(null);
+      setConfigsState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+      }));
 
       // Strip "origin/" prefix for API call
       const cleanBranch = branchName.startsWith("origin/")
@@ -188,6 +200,10 @@ export function NewRunLayout({
         projectId,
         branch: cleanBranch,
       });
+
+      if (requestId !== configRequestIdRef.current) {
+        return;
+      }
 
       if (!result.success || !result.data) {
         setConfigsState({
@@ -206,20 +222,10 @@ export function NewRunLayout({
         error: null,
       });
 
-      // Auto-select first config if available
-      if (result.data.configs.length > 0) {
-        setSelectedConfig(result.data.configs[0]);
-      } else {
-        setSelectedConfig(null);
-      }
+      setSelectedConfig(getDefaultConfig(result.data.configs));
     },
     [projectId]
   );
-
-  // Fetch configs on initial mount and when branch changes
-  useEffect(() => {
-    fetchConfigs(branch);
-  }, [branch, fetchConfigs]);
 
   // Filter instances client-side based on selection (instant, no refetch!)
   const filteredInstances = useMemo(() => {
@@ -237,6 +243,7 @@ export function NewRunLayout({
     selectionState && selectionState.key === selectionKey
       ? selectionState.instance
       : null;
+  const selectedConfigSupportsLaunch = Boolean(selectedConfig?.config);
 
   const handleSelectInstance = (
     instance: GpuInstance & { instanceId: string }
@@ -274,6 +281,12 @@ export function NewRunLayout({
 
   const handleStartRun = () => {
     if (!selectedInstance || !selectedConfig) return;
+    if (!selectedConfig.config) {
+      setError(
+        "The selected config does not define a single config file path. RLX currently launches Prime RL from the `config` field."
+      );
+      return;
+    }
     setError(null);
 
     startTransition(async () => {
@@ -308,19 +321,37 @@ export function NewRunLayout({
             repoOwner={repoOwner}
             repoName={repoName}
             onRunNameChange={setRunName}
-            onBranchChange={setBranch}
-            onConfigChange={setSelectedConfig}
+            onBranchChange={(nextBranch) => {
+              setBranch(nextBranch);
+              setError(null);
+              void fetchConfigs(nextBranch);
+            }}
+            onConfigChange={(config) => {
+              setSelectedConfig(config);
+              setError(null);
+            }}
             onLoadMoreBranches={handleLoadMoreBranches}
             className="lg:flex-1"
           />
           <div className="flex flex-col gap-2 lg:w-[140px]">
             <Button
               className="w-full md:w-auto"
-              disabled={!selectedInstance || !selectedConfig || isStarting}
+              disabled={
+                !selectedInstance ||
+                !selectedConfig ||
+                !selectedConfigSupportsLaunch ||
+                isStarting
+              }
               onClick={handleStartRun}
             >
               {isStarting ? "Starting..." : "Start Run"}
             </Button>
+            {!selectedConfigSupportsLaunch && selectedConfig ? (
+              <span className="text-sm text-muted-foreground">
+                This entry is parsed from `rlx.toml`, but it does not expose a
+                runnable `config` path yet.
+              </span>
+            ) : null}
             {error && <span className="text-sm text-destructive">{error}</span>}
           </div>
         </div>

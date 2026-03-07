@@ -151,7 +151,8 @@ class Run(Base):
     clerk_user_id = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     branch = Column(String, nullable=False)
-    # Config name from rlx.toml (resolved at job execution time)
+    # Selected config name from rlx.toml; concrete config paths are resolved
+    # when launch jobs are created.
     config_name = Column(String, nullable=False)
     status = Column(String, nullable=False, default="provisioning")
     provider = Column(String, nullable=False)

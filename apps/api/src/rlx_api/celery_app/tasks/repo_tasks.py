@@ -65,6 +65,86 @@ def run_async(coro):
         loop.close()
 
 
+def _cancel_job(session, job, *, message: str, error_type: str = "run_terminated") -> None:
+    """Mark a job as cancelled without leaving it in a stale running state."""
+    from rlx_api.database import JobStatus
+
+    if job.status == JobStatus.CANCELLED and job.completed_at is not None:
+        return
+
+    job.status = JobStatus.CANCELLED
+    job.error_message = message
+    job.error_type = error_type
+    job.completed_at = datetime.now(timezone.utc)
+    session.commit()
+
+
+def _claim_job_for_execution(session, job_id: int):
+    """Load a job and ensure its run is still active before doing any work."""
+    from rlx_api.database import Job, JobStatus, Run, RunStatus
+
+    job = session.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        logger.error(f"Job {job_id} not found")
+        return None
+
+    run = session.query(Run).filter(Run.id == job.run_id).first()
+    if not run:
+        logger.error(f"Run {job.run_id} not found for job {job_id}")
+        job.status = JobStatus.FAILED
+        job.error_message = "Associated run not found"
+        job.error_type = "run_not_found"
+        job.completed_at = datetime.now(timezone.utc)
+        session.commit()
+        return None
+
+    executable_statuses = [JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING]
+    if job.status not in executable_statuses:
+        logger.info(f"Skipping job {job_id}; current status is {job.status}")
+        return None
+
+    if run.status != RunStatus.ACTIVE:
+        _cancel_job(
+            session,
+            job,
+            message=f"Run is {run.status}; job execution skipped.",
+            error_type="run_inactive",
+        )
+        return None
+
+    job.status = JobStatus.RUNNING
+    if job.started_at is None:
+        job.started_at = datetime.now(timezone.utc)
+    session.commit()
+    return job
+
+
+def _should_skip_job_finalization(session, job_id: int) -> bool:
+    """Return True when a job was cancelled or its run stopped mid-execution."""
+    from rlx_api.database import Job, JobStatus, Run, RunStatus
+
+    session.expire_all()
+    job = session.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        return True
+
+    if job.status == JobStatus.CANCELLED:
+        logger.info(f"Skipping finalization for cancelled job {job_id}")
+        return True
+
+    run = session.query(Run).filter(Run.id == job.run_id).first()
+    if not run or run.status != RunStatus.ACTIVE:
+        _cancel_job(
+            session,
+            job,
+            message="Run terminated while job was executing.",
+            error_type="run_terminated",
+        )
+        return True
+
+    return False
+
+
 @celery_app.task(
     bind=True,
     base=DatabaseTask,
@@ -89,15 +169,9 @@ def clone_repository(self, job_id: int):
     logger.info(f"Starting clone_repository task for job {job_id}")
 
     with self.get_db_session() as session:
-        job = session.query(Job).filter(Job.id == job_id).first()
+        job = _claim_job_for_execution(session, job_id)
         if not job:
-            logger.error(f"Job {job_id} not found")
-            return {"error": "Job not found", "job_id": job_id}
-
-        # Update job status to RUNNING
-        job.status = JobStatus.RUNNING
-        job.started_at = datetime.now(timezone.utc)
-        session.commit()
+            return {"job_id": job_id, "status": "cancelled"}
 
         try:
             config = job.job_config
@@ -160,6 +234,11 @@ def clone_repository(self, job_id: int):
                 duration_ms=result.duration_ms,
             )
 
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
+
+            job = session.query(Job).filter(Job.id == job_id).first()
+
             if result.success:
                 job.status = JobStatus.SUCCESS
                 job.completed_at = datetime.now(timezone.utc)
@@ -197,6 +276,8 @@ def clone_repository(self, job_id: int):
                 }
 
         except Exception as e:
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
             logger.exception(f"Job {job_id} failed: {e}")
             job.status = JobStatus.FAILED
             job.error_message = str(e)
@@ -235,13 +316,9 @@ def list_files(self, job_id: int):
     logger.info(f"Starting list_files task for job {job_id}")
 
     with self.get_db_session() as session:
-        job = session.query(Job).filter(Job.id == job_id).first()
+        job = _claim_job_for_execution(session, job_id)
         if not job:
-            return {"error": "Job not found", "job_id": job_id}
-
-        job.status = JobStatus.RUNNING
-        job.started_at = datetime.now(timezone.utc)
-        session.commit()
+            return {"job_id": job_id, "status": "cancelled"}
 
         try:
             config = job.job_config
@@ -281,6 +358,11 @@ def list_files(self, job_id: int):
                 exit_code=result.exit_code,
                 duration_ms=result.duration_ms,
             )
+
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
+
+            job = session.query(Job).filter(Job.id == job_id).first()
 
             if result.success:
                 # Parse output to separate files and directories
@@ -331,6 +413,8 @@ def list_files(self, job_id: int):
                 }
 
         except Exception as e:
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
             logger.exception(f"Job {job_id} failed: {e}")
             job.status = JobStatus.FAILED
             job.error_message = str(e)
@@ -363,13 +447,9 @@ def run_custom_command(self, job_id: int):
     logger.info(f"Starting custom command task for job {job_id}")
 
     with self.get_db_session() as session:
-        job = session.query(Job).filter(Job.id == job_id).first()
+        job = _claim_job_for_execution(session, job_id)
         if not job:
-            return {"error": "Job not found", "job_id": job_id}
-
-        job.status = JobStatus.RUNNING
-        job.started_at = datetime.now(timezone.utc)
-        session.commit()
+            return {"job_id": job_id, "status": "cancelled"}
 
         try:
             config = job.job_config
@@ -413,6 +493,11 @@ def run_custom_command(self, job_id: int):
                 exit_code=result.exit_code,
                 duration_ms=result.duration_ms,
             )
+
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
+
+            job = session.query(Job).filter(Job.id == job_id).first()
 
             if result.success:
                 job.status = JobStatus.SUCCESS
@@ -458,6 +543,8 @@ def run_custom_command(self, job_id: int):
                 }
 
         except Exception as e:
+            if _should_skip_job_finalization(session, job_id):
+                return {"job_id": job_id, "status": "cancelled"}
             logger.exception(f"Job {job_id} failed: {e}")
             job.status = JobStatus.FAILED
             job.error_message = str(e)

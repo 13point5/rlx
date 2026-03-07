@@ -1,782 +1,217 @@
-# Celery Redis Job Queue System
+# Celery Job Queue System
 
-This document explains the implementation of the distributed job queue system using Celery with Redis Cloud for executing commands on GPU pods.
+This document describes the current Celery + Redis job system in RLX.
+
+For the broader application walkthrough, see `docs/architecture_walkthrough.md`.
 
 ## Overview
 
-The job queue system enables asynchronous execution of commands on GPU pods. When a run is created, jobs are automatically queued and execute when the pod becomes ready—independent of whether the client is polling.
+RLX uses Celery to execute pod work asynchronously after a run is created.
 
-## Architecture
+The queue system is responsible for:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Job Queue Architecture                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+- waiting for Prime Intellect pods to become ready
+- starting jobs in sequence
+- SSHing into the pod
+- cloning repositories
+- bootstrapping `prime-rl`
+- launching Prime RL with the selected config file path
+- recording command output for the UI
 
-                              ┌─────────────────┐
-                              │   Redis Cloud   │
-                              │  (Broker &      │
-                              │   Backend)      │
-                              └────────┬────────┘
-                                       │
-           ┌───────────────────────────┼───────────────────────────┐
-           │                           │                           │
-           ▼                           ▼                           ▼
-  ┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-  │  FastAPI Server │         │  Celery Worker  │         │  Celery Beat    │
-  │                 │────────▶│                 │         │  (Scheduler)    │
-  │ • Create jobs   │         │ • Execute tasks │         │                 │
-  │ • Query status  │         │ • SSH to pods   │         │ • Poll pending  │
-  │ • Cancel jobs   │         │ • Run commands  │         │   jobs (30s)    │
-  └─────────────────┘         └────────┬────────┘         └─────────────────┘
-           │                           │
-           │                           │
-           ▼                           ▼
-  ┌─────────────────┐         ┌─────────────────┐
-  │   PostgreSQL    │         │    GPU Pod      │
-  │                 │         │ (Prime Intellect)│
-  │ • Job state     │         │                 │
-  │ • Command logs  │         │ • SSH access    │
-  │ • Results       │         │ • Clone repos   │
-  └─────────────────┘         └─────────────────┘
+## Runtime Components
+
+```text
+FastAPI -> PostgreSQL
+       -> Redis
+          -> Celery worker
+          -> Celery beat
+       -> Prime Intellect API
+       -> AWS Secrets Manager
+
+Celery worker -> SSH -> Prime Intellect pod
 ```
 
-## Directory Structure
+## Core Pieces
 
-```
-apps/api/
-├── src/
-│   └── rlx_api/
-│       ├── celery_app/
-│       │   ├── __init__.py           # Celery app configuration
-│       │   ├── config.py             # Settings (timeouts, retries, etc.)
-│       │   ├── executors/
-│       │   │   ├── __init__.py
-│       │   │   ├── base.py           # CommandExecutor ABC, CommandResult
-│       │   │   └── ssh.py            # SSH executor using asyncssh
-│       │   └── tasks/
-│       │       ├── __init__.py
-│       │       ├── base.py           # DatabaseTask base class, get_sync_session()
-│       │       ├── pod_tasks.py      # Pod lifecycle tasks
-│       │       └── repo_tasks.py     # Repository operations
-│       ├── job_templates.py          # Job template definitions (reusable)
-│       └── routers/
-│           ├── jobs.py               # Jobs API endpoints
-│           └── runs.py               # Runs API (includes sync-jobs endpoint)
-└── alembic/versions/
-    └── add_jobs_tables.py    # Database migration
-```
+### Celery app
 
-## Core Components
+`apps/api/src/rlx_api/celery_app/__init__.py` configures:
 
-### 1. CommandExecutor Abstraction
+- Redis broker/backend
+- queue routing
+- retry defaults
+- periodic tasks
 
-The `CommandExecutor` provides a clean interface for executing commands with structured results:
+### Task base
 
-```python
-from rlx_api.celery_app.executors import SSHCommandExecutor, CommandResult
+`apps/api/src/rlx_api/celery_app/tasks/base.py` provides:
 
-# Create executor from connection string (as returned by Prime Intellect)
-# Supports formats: "ssh ubuntu@host", "root@host -p 22", etc.
-executor = SSHCommandExecutor.from_connection_string(
-    connection_string="ubuntu@192.168.1.100",  # or "ssh ubuntu@host -p 2222"
-    private_key=private_key_string,
-)
+- sync DB sessions for worker processes
+- job status update helpers
+- command logging helpers
 
-# Or create with individual parameters
-executor = SSHCommandExecutor(
-    host="192.168.1.100",
-    port=22,
-    username="ubuntu",
-    private_key=private_key_string,
-)
+### SSH executor
 
-# Execute command
-result: CommandResult = await executor.execute(
-    "git clone https://github.com/owner/repo.git /workspace/repo",
-    working_dir="/workspace",
-    timeout_seconds=600,  # Use None for no timeout
-    env={"GIT_SSH_COMMAND": "ssh -o StrictHostKeyChecking=no"},
-)
+`apps/api/src/rlx_api/celery_app/executors/ssh.py`:
 
-# Check result
-if result.success:
-    print(f"Success! Output: {result.stdout}")
-else:
-    print(f"Failed: {result.error_message}")
-    print(f"Exit code: {result.exit_code}")
-    print(f"Stderr: {result.stderr}")
-```
+- parses Prime Intellect SSH connection strings
+- opens SSH sessions with the user's stored private key
+- executes commands with timeout and env support
+- exposes a streaming helper, but the current queue path still uses the non-streaming execution method
 
-#### CommandResult Fields
+### Pod tasks
 
-| Field           | Type            | Description                                           |
-| --------------- | --------------- | ----------------------------------------------------- |
-| `stdout`        | `str`           | Standard output from command                          |
-| `stderr`        | `str`           | Standard error from command                           |
-| `exit_code`     | `int \| None`   | Process exit code                                     |
-| `status`        | `CommandStatus` | PENDING, RUNNING, SUCCESS, FAILED, TIMEOUT, CANCELLED |
-| `started_at`    | `datetime`      | When execution started                                |
-| `completed_at`  | `datetime`      | When execution completed                              |
-| `duration_ms`   | `int`           | Execution time in milliseconds                        |
-| `error_message` | `str \| None`   | Human-readable error description                      |
-| `error_type`    | `str \| None`   | Error category (timeout, ssh_error, command_error)    |
+`apps/api/src/rlx_api/celery_app/tasks/pod_tasks.py` owns:
 
-### 2. Database Models
+- run readiness polling
+- first-job kickoff
+- next-job sequencing
+- fallback queue repair for stuck runs
 
-#### Job Model
+### Repo tasks
 
-Tracks the lifecycle of a job:
+`apps/api/src/rlx_api/celery_app/tasks/repo_tasks.py` owns:
 
-```python
-class Job(Base):
-    __tablename__ = "jobs"
+- `clone_repository`
+- `list_files`
+- `run_custom_command`
 
-    id: int                    # Primary key
-    run_id: int                # Associated run
-    clerk_user_id: str         # Owner
-    job_type: str              # CLONE_REPO, LIST_FILES, CUSTOM_COMMAND
-    job_config: dict           # Type-specific configuration
-    celery_task_id: str        # Celery task ID for tracking
-    status: str                # PENDING, QUEUED, RUNNING, SUCCESS, FAILED, etc.
-    sequence: int              # Execution order within run
-    created_at: datetime
-    started_at: datetime
-    completed_at: datetime
-    error_message: str         # Error details if failed
-    error_type: str            # Error category
-```
+## Job State Model
 
-#### JobCommand Model
+Each `Job` moves through:
 
-Records each command executed as part of a job:
+1. `PENDING`
+2. `QUEUED`
+3. `RUNNING`
+4. `SUCCESS` or `FAILED` / `TIMEOUT` / `CANCELLED`
 
-```python
-class JobCommand(Base):
-    __tablename__ = "job_commands"
+Important sequencing rule:
 
-    id: int
-    job_id: int                # Parent job
-    command: str               # The command that was run
-    working_dir: str           # Working directory
-    stdout: str                # Command output
-    stderr: str                # Error output
-    exit_code: int             # Exit code
-    status: str                # Command status
-    started_at: datetime
-    completed_at: datetime
-    duration_ms: int           # Execution time
-    sequence: int              # Order within job
+- the next job starts only when the current one succeeds
+- failures block later jobs until retried
+
+## How Run Activation Works
+
+Runs do not depend on the frontend staying open.
+
+`check_pending_run_statuses` runs periodically and:
+
+1. finds runs in `PENDING` or `PROVISIONING`
+2. fetches pod status from Prime Intellect
+3. updates the run record in PostgreSQL
+4. stores `ssh_connection` once the pod is active
+5. triggers `on_pod_ready`
+
+Once the run is active:
+
+1. `on_pod_ready` finds the first pending job
+2. `queue_job()` atomically claims it
+3. the worker runs it
+4. `start_next_job_for_run()` advances the sequence on success
+
+## Default Job Sequence
+
+Jobs are seeded from `apps/api/src/rlx_api/job_templates.py`.
+
+Current default sequence:
+
+| Sequence | Type | Purpose |
+| --- | --- | --- |
+| 0 | `CLONE_REPO` | Clone user repo to `/workspace/repo` |
+| 1 | `LIST_FILES` | List files in `/workspace/repo` |
+| 2 | `CLONE_REPO` | Clone `PrimeIntellect-ai/prime-rl` to `/workspace/prime-rl` |
+| 3 | `CUSTOM_COMMAND` | Install `uv` |
+| 4 | `CUSTOM_COMMAND` | Run `uv sync --all-extras` in `prime-rl` |
+| 5 | `CUSTOM_COMMAND` | Run `uv pip install -e /workspace/repo` |
+| 6 | `CUSTOM_COMMAND` | Verify `import prime_rl` |
+| 7 | `CUSTOM_COMMAND` | Print `/workspace/repo/rlx.toml` |
+| 8 | `CUSTOM_COMMAND` | Launch Prime RL with the resolved config path |
+
+## How The Launch Job Gets Its Config Path
+
+The run request still sends a user-facing `config_name`, but the launch job needs a concrete file path.
+
+RLX resolves that by:
+
+1. fetching `rlx.toml` from the selected repo branch
+2. finding the selected config entry by name
+3. requiring that entry to expose `config = "path/to/file.toml"`
+4. validating that the referenced config file exists on that branch
+5. building the launch job with that path
+6. attaching `env_vars` from the same `rlx.toml` entry if present
+
+Example:
+
+```toml
+[grpo-f1]
+description = "GRPO reinforcement learning with just the F1 reward"
+config = "configs/grpo-f1.toml"
 ```
 
-### 3. Job Types
-
-#### CLONE_REPO
-
-Clones a Git repository to the pod:
-
-```python
-job_config = {
-    "repo_url": "https://github.com/owner/repo.git",
-    "branch": "main",
-    "target_dir": "/workspace/repo",
-    "depth": 1,  # Shallow clone (optional)
-}
-```
-
-#### LIST_FILES
-
-Lists files and directories in a path:
-
-```python
-job_config = {
-    "target_dir": "/workspace/repo",
-}
-
-# Result stored in job_config after completion:
-{
-    "result": {
-        "files": ["README.md", "main.py", "requirements.txt"],
-        "directories": ["src", "tests", "docs"],
-    }
-}
-```
-
-#### CUSTOM_COMMAND
-
-Executes an arbitrary command:
-
-```python
-job_config = {
-    "command": "pip install -r requirements.txt",
-    "working_dir": "/workspace/repo",
-    "timeout_seconds": 300,
-    "env": {"PIP_CACHE_DIR": "/tmp/pip-cache"},
-}
-```
-
-### 4. Celery Tasks
-
-#### Helper Functions
-
-Two helper functions in `pod_tasks.py` handle job queueing:
-
-```python
-def queue_job(job, session):
-    """Queue a single job for execution based on job_type."""
-    # Dispatches to clone_repository, list_files, or run_custom_command
-    # Updates job status to QUEUED and stores celery_task_id
-
-def start_next_job_for_run(run_id: int):
-    """Start the next pending job for a run (by sequence order)."""
-    # Called after each job completes to continue the sequence
-    # Uses get_sync_session() since it's called outside task context
-```
-
-#### on_pod_ready
-
-Triggered when a run's status changes to `ACTIVE`. Starts the **first job** (sequence 0) for the run. Subsequent jobs are triggered when each job completes.
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask)
-def on_pod_ready(self, run_id: int):
-    # Get first pending job by sequence
-    # Queue it for execution
-    # Next job starts when this one completes
-```
-
-#### check_pending_run_statuses (Periodic)
-
-Runs every 15 seconds via Celery Beat. Checks runs with PENDING/PROVISIONING status, fetches current status from Prime Intellect API, and triggers `on_pod_ready` when pods become ACTIVE. This removes the dependency on frontend polling for job execution.
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask)
-def check_pending_run_statuses(self):
-    # Find runs waiting for pod (PENDING, PROVISIONING)
-    # Batch fetch statuses from Prime Intellect API
-    # Update run status in database
-    # Trigger on_pod_ready for newly ACTIVE runs
-```
-
-#### check_pending_jobs (Periodic - Fallback)
-
-Runs every 30 seconds via Celery Beat as a fallback. Catches any stalled jobs that didn't get triggered by normal job completion.
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask)
-def check_pending_jobs(self):
-    # Find runs with pending jobs but no active jobs
-    # Check if a failed job is blocking the sequence
-    # Only start next job if no failed job with lower sequence exists
-```
-
-**Note**: If a job fails, this task will NOT start subsequent jobs. It checks for failed jobs with a lower sequence number and skips the run if one exists. This prevents the fallback task from bypassing the sequential failure behavior.
-
-#### Sequential Job Execution
-
-Jobs within a run are executed **sequentially** by their `sequence` field:
-
-1. When pod becomes ACTIVE, `on_pod_ready` starts job with sequence=0
-2. When job completes, it calls `start_next_job_for_run(run_id)`
-3. This finds and queues the next pending job (lowest sequence)
-4. Process repeats until no more pending jobs
-
-This ensures that `LIST_FILES` waits for `CLONE_REPO` to complete.
-
-**Note**: If a job fails, subsequent jobs in the sequence will NOT start. This is intentional since jobs are often dependent (e.g., LIST_FILES requires CLONE_REPO to succeed). Failed jobs can be retried via the API, which will resume the sequence on success.
-
-#### clone_repository
-
-Clones a repository to the pod via SSH:
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask, max_retries=3)
-def clone_repository(self, job_id: int):
-    # Get SSH credentials from AWS Secrets Manager
-    # Build git clone command
-    # Create parent directory (mkdir -p) before cloning
-    # Execute via SSHCommandExecutor (all async ops in single event loop)
-    # Record results in JobCommand
-    # Update Job status
-```
-
-**Note**: The clone task automatically creates the parent directory (e.g., `/workspace`) before cloning, since pods may not have this directory by default.
-
-#### list_files
-
-Lists directory contents:
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask, max_retries=3)
-def list_files(self, job_id: int):
-    # Execute ls -1Ap via SSH
-    # Parse output into files and directories
-    # Store result in job_config
-```
-
-#### run_custom_command
-
-Executes an arbitrary command on the pod:
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask, max_retries=2)
-def run_custom_command(self, job_id: int):
-    # Get command from job_config
-    # Execute via SSHCommandExecutor with optional working_dir and env
-    # Store result (stdout, stderr, exit_code) in job_config
-```
-
-### 5. Async Execution Pattern
-
-Since Celery tasks run in sync context but the SSH executor is async, we use a helper pattern that ensures all async operations run in a **single event loop**:
-
-```python
-def run_async(coro):
-    """Helper to run async code in Celery tasks."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-```
-
-**Important**: All async operations for a single executor must be wrapped in one async function and executed via a single `run_async()` call. This prevents "Event loop is closed" errors:
-
-```python
-# CORRECT: Single event loop for all operations
-async def execute_clone():
-    try:
-        await executor.execute(mkdir_cmd, timeout_seconds=30)
-        return await executor.execute(clone_cmd, timeout_seconds=600)
-    finally:
-        await executor.close()
-
-result = run_async(execute_clone())
-
-# WRONG: Multiple event loops (causes "Event loop is closed")
-run_async(executor.execute(mkdir_cmd))   # Loop 1 created and closed
-run_async(executor.execute(clone_cmd))   # Loop 2 - executor connection invalid!
-run_async(executor.close())              # Loop 3 - won't work
-```
-
-## Frontend Integration
-
-### Jobs Panel
-
-The run page displays a `JobsPanel` component that shows all jobs for a run with:
-
-- Job type with icon (Clone Repository, List Files, Run Command)
-- Status badge (Pending, Queued, Running, Success, Failed, etc.)
-- Expandable details showing:
-  - Command that was executed
-  - Exit code and duration
-  - Stdout output
-  - Stderr output (only shown for **failed** commands)
-  - Result data (e.g., file listings)
-- Retry button for failed/cancelled/timeout jobs
-
-### Output Display
-
-- **Stdout**: Always shown when available
-- **Stderr**: Only shown when command failed (exit code != 0)
-  - Many tools (like git) write progress to stderr even on success
-  - Hiding stderr for successful commands reduces noise
-
-### Polling
-
-The jobs panel polls for updates every 3 seconds while jobs are active (PENDING, QUEUED, or RUNNING). Polling stops when all jobs reach a terminal state or the run is terminated.
-
-## API Endpoints
-
-### Create Job
-
-```http
-POST /api/jobs
-Content-Type: application/json
-
-{
-    "run_id": 123,
-    "job_type": "CUSTOM_COMMAND",
-    "config": {
-        "command": "python train.py",
-        "working_dir": "/workspace/repo"
-    }
-}
-```
-
-### List Jobs
-
-```http
-GET /api/jobs?run_id=123&status=SUCCESS
-```
-
-### Get Job Details
-
-```http
-GET /api/jobs/456
-```
-
-Response includes command history:
-
-```json
-{
-  "id": 456,
-  "run_id": 123,
-  "job_type": "CLONE_REPO",
-  "status": "SUCCESS",
-  "config": {
-    "repo_url": "https://github.com/owner/repo.git",
-    "branch": "main"
-  },
-  "commands": [
-    {
-      "id": 1,
-      "command": "git clone --depth 1 --branch main https://github.com/owner/repo.git /workspace/repo",
-      "exit_code": 0,
-      "status": "SUCCESS",
-      "duration_ms": 5432
-    }
-  ]
-}
-```
-
-### Cancel Job
-
-```http
-POST /api/jobs/456/cancel
-```
-
-Only works for `PENDING` or `QUEUED` jobs.
-
-### Retry Job
-
-```http
-POST /api/jobs/456/retry
-```
-
-Works for `FAILED`, `CANCELLED`, or `TIMEOUT` jobs.
-
-### Get Job Result
-
-```http
-GET /api/jobs/456/result
-```
-
-Returns the result stored in `job_config`:
-
-```json
-{
-  "job_id": 456,
-  "job_type": "LIST_FILES",
-  "status": "SUCCESS",
-  "result": {
-    "files": ["README.md", "main.py"],
-    "directories": ["src", "tests"]
-  }
-}
-```
-
-### Sync Jobs (Add Missing Jobs to Existing Run)
-
-```http
-POST /api/runs/123/sync-jobs
-```
-
-Adds missing jobs from the current template to an existing run. Returns:
-
-```json
-{
-  "added_count": 5,
-  "message": "Added 5 new job(s)"
-}
-```
-
-Use this when new jobs are added to the template after a run was created.
-
-## Job Lifecycle
-
-```
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│ PENDING  │────▶│  QUEUED  │────▶│ RUNNING  │────▶│ SUCCESS  │
-└──────────┘     └──────────┘     └──────────┘     └──────────┘
-     │                │                │
-     │                │                │           ┌──────────┐
-     │                │                └──────────▶│  FAILED  │
-     │                │                            └──────────┘
-     │                │
-     │                │                            ┌──────────┐
-     │                └───────────────────────────▶│ CANCELLED│
-     │                                             └──────────┘
-     │
-     │                ┌──────────┐
-     └───────────────▶│ CANCELLED│ (via API)
-                      └──────────┘
-```
-
-1. **PENDING**: Job created, waiting for pod to be ready
-2. **QUEUED**: Added to Celery queue, waiting for worker
-3. **RUNNING**: Currently executing on pod
-4. **SUCCESS**: Completed successfully
-5. **FAILED**: Execution failed (can retry)
-6. **TIMEOUT**: Timed out (can retry)
-7. **CANCELLED**: Cancelled by user (can retry)
-
-## Integration with Runs
-
-### Job Templates
-
-Jobs are defined in `apps/api/src/rlx_api/job_templates.py` as reusable templates:
-
-```python
-JOB_TEMPLATES = [
-    {"sequence": 0, "job_type": JobType.CLONE_REPO, "get_config": lambda ctx: {...}},
-    {"sequence": 1, "job_type": JobType.LIST_FILES, "get_config": lambda ctx: {...}},
-    # ... more templates
-]
-
-def create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences=None):
-    """Create Job objects from templates, optionally skipping existing sequences."""
-```
-
-This allows:
-- Consistent job creation across `create_run` and `sync_jobs` endpoints
-- Easy addition of new jobs to the template
-- Syncing existing runs with new job templates
-
-### Default Job Sequence
-
-When a run is created, these jobs are automatically added:
-
-| Sequence | Type | Description |
-|----------|------|-------------|
-| 0 | CLONE_REPO | Clone user's project to `/workspace/repo` |
-| 1 | LIST_FILES | List files in `/workspace/repo` |
-| 2 | CLONE_REPO | Clone prime-rl framework to `/workspace/prime-rl` |
-| 3 | CUSTOM_COMMAND | Install uv package manager |
-| 4 | CUSTOM_COMMAND | Install prime-rl dependencies (`uv sync --all-extras`) |
-| 5 | CUSTOM_COMMAND | Install user's verifiers env (`uv pip install -e /workspace/repo`) |
-| 6 | CUSTOM_COMMAND | Verify installation (`uv pip list`) |
-
-### Sync Jobs Endpoint
-
-The `POST /api/runs/{run_id}/sync-jobs` endpoint adds missing jobs from the current template to existing runs:
-
-```python
-# 1. Get existing job sequences
-existing_sequences = {0, 1}  # e.g., old run only has jobs 0 and 1
-
-# 2. Create missing jobs (sequences 2-6)
-new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)
-
-# 3. Add to database
-```
-
-This is useful when new jobs are added to the template after a run was created. The UI has a "Sync Jobs" button in the Jobs panel.
-
-### Job Execution Trigger
-
-The `check_pending_run_statuses` Celery Beat task monitors runs and triggers job processing:
-
-```python
-# Runs every 15 seconds via Celery Beat
-# 1. Finds runs with PENDING/PROVISIONING status
-# 2. Fetches current status from Prime Intellect API
-# 3. Updates run status and pod connection info in database
-# 4. Triggers on_pod_ready when status becomes ACTIVE
-```
-
-The frontend status endpoints (`GET /api/runs/{id}/status`) simply read from the database - they do not call external APIs or trigger jobs.
-
-## Running the Workers
-
-### Development
-
-**Important**: No `PYTHONPATH` override is needed now that the API is a proper package.
+This becomes the pod-side command:
 
 ```bash
-# Terminal 1: FastAPI server
+source $HOME/.local/bin/env && uv run rl @ /workspace/repo/configs/grpo-f1.toml
+```
+
+## Why The Queue Uses Job Config Instead Of Re-Parsing On The Pod
+
+The queue system builds a concrete launch job before execution so that:
+
+- the worker has a deterministic command to run
+- job logs clearly show the exact launch command
+- the launch step fits the same retry and sequencing model as the setup steps
+
+## Syncing Old Runs
+
+`POST /api/runs/{run_id}/sync-jobs` compares existing job sequences with the current template and adds any missing jobs.
+
+That is useful when new job steps are added after a run already exists.
+
+For config-path-based launch jobs, sync logic re-resolves the selected `config_name` from `rlx.toml`.
+
+## Command Logging
+
+Each executed command is stored in `JobCommand` with:
+
+- command text
+- working directory
+- stdout
+- stderr
+- exit code
+- duration
+
+This is what the run page displays when you expand a job.
+
+Important current limitation:
+
+- `stdout` and `stderr` are written after command completion
+- the UI polls job state, but it does not receive live partial output for a still-running command
+
+## Local Development
+
+Start the API:
+
+```bash
 cd apps/api
 uv run uvicorn rlx_api.main:app --reload --port 8000
+```
 
-# Terminal 2: Celery worker
+Start the worker:
+
+```bash
 cd apps/api
 uv run celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops
+```
 
-# Terminal 3: Celery beat (scheduler)
+Start beat:
+
+```bash
 cd apps/api
 uv run celery -A rlx_api.celery_app:celery_app beat --loglevel=info
 ```
 
-### Production
+Or use the repo-level helpers:
 
-Use separate containers/processes for each component:
-
-```bash
-# Worker
-celery -A rlx_api.celery_app:celery_app worker --loglevel=info -Q pod_ops,repo_ops --concurrency=4
-
-# Beat scheduler
-celery -A rlx_api.celery_app:celery_app beat --loglevel=info
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable                    | Description                          | Default                    |
-| --------------------------- | ------------------------------------ | -------------------------- |
-| `REDIS_URL`                 | Redis connection URL                 | `redis://localhost:6379/0` |
-| `CELERY_TASK_TIMEOUT`       | Default task timeout (seconds)       | `3600`                     |
-| `CELERY_CLONE_TIMEOUT`      | Clone task timeout (seconds)         | `600`                      |
-| `CELERY_COMMAND_TIMEOUT`    | General command timeout (seconds)    | `300`                      |
-| `CELERY_MAX_RETRIES`        | Maximum retry attempts               | `3`                        |
-| `CELERY_RETRY_DELAY`        | Delay between retries (seconds)      | `60`                       |
-| `CELERY_JOB_CHECK_INTERVAL` | Pending job check interval (seconds) | `30`                       |
-
-### Redis Cloud Connection
-
-For Redis Cloud with TLS:
-
-```bash
-REDIS_URL=rediss://default:password@redis-xxxxx.c1.region.cloud.redislabs.com:xxxxx/0
-```
-
-Note: Use `rediss://` (with double 's') for TLS connections.
-
-## Error Handling
-
-### Retry Strategy
-
-Tasks use exponential backoff with jitter:
-
-- Default retry delay: 60 seconds
-- Maximum retries: 3
-- Backoff multiplier: 2x per retry
-
-### Error Types
-
-| Error Type      | Description           | Retryable |
-| --------------- | --------------------- | --------- |
-| `ssh_error`     | SSH connection failed | Yes       |
-| `timeout`       | Command timed out     | Yes       |
-| `command_error` | Non-zero exit code    | Depends   |
-| `clone_error`   | Git clone failed      | Yes       |
-| `list_error`    | File listing failed   | Yes       |
-| `unknown`       | Unexpected error      | Yes       |
-
-### Common Errors and Solutions
-
-| Error                                             | Cause                                           | Solution                                                                                 |
-| ------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `Permission denied for user root`                 | SSH key not provisioned to pod                  | Ensure user has SSH key configured; we now explicitly pass `sshKeyId` when creating pods |
-| `Event loop is closed`                            | Multiple `run_async()` calls with same executor | Wrap all async ops in single async function                                              |
-| `No such file or directory: /workspace`           | Directory doesn't exist on pod                  | Clone task now auto-creates parent directories                                           |
-| `ModuleNotFoundError: No module named 'rlx_api'` | Package not installed in the environment        | Run `uv sync` in `apps/api` to install the package                                       |
-| `No SSH key found`                                | User tried to create run without SSH key        | Generate SSH key in Settings before creating runs                                        |
-
-### Dead Letter Queue
-
-Failed tasks after all retries are logged and the job status is set to `FAILED`. The error details are stored in:
-
-- `job.error_message`: Human-readable error
-- `job.error_type`: Error category
-- `job_commands.stderr`: Command error output
-
-## Monitoring
-
-### Flower (Celery Monitoring)
-
-```bash
-# Install
-uv add flower
-
-# Run
-uv run celery -A rlx_api.celery_app:celery_app flower --port=5555
-```
-
-Access at http://localhost:5555 for:
-
-- Active workers and their status
-- Task progress and history
-- Queue lengths
-- Task success/failure rates
-
-## Adding New Job Types
-
-1. Add the type to `JobType` enum in `apps/api/src/rlx_api/database.py`:
-
-```python
-class JobType(StrEnum):
-    CLONE_REPO = "CLONE_REPO"
-    LIST_FILES = "LIST_FILES"
-    CUSTOM_COMMAND = "CUSTOM_COMMAND"
-    INSTALL_DEPS = "INSTALL_DEPS"  # New type
-```
-
-2. Create the task in `rlx_api/celery_app/tasks/repo_tasks.py`:
-
-```python
-@celery_app.task(bind=True, base=DatabaseTask, max_retries=3)
-def install_dependencies(self, job_id: int):
-    # Implementation
-    pass
-```
-
-3. Register in the `queue_job` function in `rlx_api/celery_app/tasks/pod_tasks.py`:
-
-```python
-def queue_job(job, session):
-    # ... existing handlers ...
-    elif job.job_type == "INSTALL_DEPS":
-        from rlx_api.celery_app.tasks.repo_tasks import install_dependencies
-        task = install_dependencies.delay(job.id)
-```
-
-4. Export in `rlx_api/celery_app/tasks/__init__.py`:
-
-```python
-from rlx_api.celery_app.tasks.repo_tasks import install_dependencies
-```
-
-## Security Considerations
-
-1. **SSH Keys**:
-   - Private keys are stored in AWS Secrets Manager and fetched on-demand
-   - Public keys are uploaded to Prime Intellect and must be set as **primary** to be provisioned to new pods
-   - Keys are generated client-side in OpenSSH Ed25519 format
-2. **Redis TLS**: Use `rediss://` URLs for encrypted connections
-3. **Command Validation**: Validate job configs before execution
-4. **User Isolation**: Jobs are scoped to `clerk_user_id` and verified on all operations
-
-## SSH Key Flow
-
-For jobs to execute successfully, the following must be in place:
-
-1. **Key Generation**: User generates Ed25519 key pair in the frontend
-2. **Upload**: Public key uploaded to Prime Intellect, private key stored in AWS Secrets Manager
-3. **Pod Creation**: When creating a run, the `sshKeyId` is explicitly passed to Prime Intellect (see below)
-4. **Pod Provisioning**: The pod is created with the specified SSH key
-5. **Job Execution**: Celery worker retrieves private key from AWS and connects to pod
-
-### Explicit SSH Key Assignment
-
-When creating a pod, we explicitly pass the user's SSH key ID rather than relying on the "primary" key mechanism:
-
-```python
-# In routers/runs.py - create_run endpoint
-ssh_key = await db.execute(
-    select(UserSshKey).where(UserSshKey.clerk_user_id == clerk_user_id)
-)
-
-pod_payload = {
-    "name": body.name,
-    "cloudId": body.instance.cloud_id,
-    # ... other fields ...
-    "sshKeyId": ssh_key.prime_ssh_key_id,  # Explicitly set SSH key
-}
-```
-
-This ensures reliable SSH key provisioning. Users must have an SSH key configured before creating runs.
-
-**Note**: Existing pods will NOT be updated if you change SSH keys. You must terminate and create new runs to use a different key.
+- `docker-compose.yml`
+- `dev.sh`

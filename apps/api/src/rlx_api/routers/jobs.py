@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from rlx_api.database import Job, JobCommand, JobStatus, JobType, Run
+from rlx_api.database import Job, JobCommand, JobStatus, JobType, Run, RunStatus
 from rlx_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -339,6 +339,27 @@ async def retry_job(job_id: int, user: CurrentUser, db: DbSession):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
+        )
+
+    run_result = await db.execute(
+        select(Run).where(Run.id == job.run_id, Run.clerk_user_id == clerk_user_id)
+    )
+    run = run_result.scalar_one_or_none()
+
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Run not found",
+        )
+
+    non_retryable_run_statuses = [RunStatus.TERMINATED, RunStatus.STOPPED, RunStatus.ERROR]
+    if run.status in non_retryable_run_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Cannot retry a job for a run with status {run.status}. "
+                "Create a new run instead."
+            ),
         )
 
     retryable_statuses = [JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.TIMEOUT]

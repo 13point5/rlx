@@ -680,6 +680,53 @@ class RlxConfigResponse:
     found: bool  # Whether rlx.toml exists in the repo
 
 
+async def repo_file_exists(
+    access_token: str,
+    owner: str,
+    repo: str,
+    path: str,
+    branch: str = "main",
+) -> bool:
+    """
+    Check whether a specific file exists in a repository branch.
+
+    Returns False on 404 and raises the standard GitHub API exceptions
+    for auth/access/rate-limit failures.
+    """
+    normalized_path = path.strip().lstrip("/")
+    if not normalized_path:
+        return False
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/contents/{normalized_path}",
+            params={"ref": branch},
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+
+    if response.status_code == 401:
+        raise GitHubTokenInvalidError("GitHub token is invalid or expired")
+
+    if response.status_code == 404:
+        return False
+
+    if response.status_code == 403:
+        if "rate limit" in response.text.lower():
+            raise GitHubRateLimitError("GitHub API rate limit exceeded")
+        raise GitHubNoAccessError(f"No access to repository {owner}/{repo}")
+
+    if response.status_code == 429:
+        raise GitHubRateLimitError("GitHub API rate limit exceeded")
+
+    if response.status_code != 200:
+        raise GitHubAPIError(f"GitHub API error: {response.status_code}")
+
+    return True
+
+
 async def fetch_rlx_config(
     access_token: str,
     owner: str,
