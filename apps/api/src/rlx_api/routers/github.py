@@ -424,6 +424,7 @@ async def get_project_rlx_config(
                     "inference": entry.inference,
                     "orchestrator": entry.orchestrator,
                     "trainer": entry.trainer,
+                    "env_path": entry.env_path,
                     "env_vars": entry.env_vars,
                 }
                 for entry in rlx_config.configs
@@ -458,6 +459,7 @@ async def get_project_rlx_config(
                         "inference": entry.inference,
                         "orchestrator": entry.orchestrator,
                         "trainer": entry.trainer,
+                        "env_path": entry.env_path,
                         "env_vars": entry.env_vars,
                     }
                     for entry in rlx_config.configs

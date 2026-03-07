@@ -1,4 +1,5 @@
 import logging
+import posixpath
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -70,6 +71,7 @@ class ResolvedRunConfig:
 
     branch: str
     config_path: str
+    env_path: str | None
     env_vars: dict[str, str] | None
 
 
@@ -357,9 +359,58 @@ async def resolve_run_config(
             ),
         )
 
+    env_path = selected_entry.env_path
+    if env_path:
+        env_pyproject = posixpath.join(env_path, "pyproject.toml")
+        env_setup_py = posixpath.join(env_path, "setup.py")
+        try:
+            env_installable = await github_service.repo_file_exists(
+                access_token,
+                owner=project.repo_owner,
+                repo=project.repo_name,
+                path=env_pyproject,
+                branch=clean_branch,
+            ) or await github_service.repo_file_exists(
+                access_token,
+                owner=project.repo_owner,
+                repo=project.repo_name,
+                path=env_setup_py,
+                branch=clean_branch,
+            )
+        except GitHubTokenInvalidError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="GitHub token expired while validating the selected environment path.",
+            )
+        except GitHubNoAccessError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to repository {project.repo_owner}/{project.repo_name}.",
+            )
+        except GitHubRateLimitError:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="GitHub API rate limit exceeded. Please try again later.",
+            )
+        except GitHubAPIError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            )
+
+        if not env_installable:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Environment path '{env_path}' for entry '{config_name}' is not an "
+                    f"installable Python project in branch '{clean_branch}'."
+                ),
+            )
+
     return ResolvedRunConfig(
         branch=clean_branch,
         config_path=selected_entry.config,
+        env_path=env_path,
         env_vars=selected_entry.env_vars,
     )
 
@@ -525,6 +576,7 @@ async def create_run(body: CreateRunRequest, user: CurrentUser, db: DbSession):
         "branch": resolved_config.branch,
         "config_name": body.config_name,
         "config_path": resolved_config.config_path,
+        "env_path": resolved_config.env_path,
         "env_vars": resolved_config.env_vars,
     }
     jobs = create_jobs_from_templates(run.id, clerk_user_id, ctx)
@@ -745,6 +797,7 @@ async def sync_jobs(run_id: int, user: CurrentUser, db: DbSession):
         "branch": resolved_config.branch,
         "config_name": run.config_name,
         "config_path": resolved_config.config_path,
+        "env_path": resolved_config.env_path,
         "env_vars": resolved_config.env_vars,
     }
     new_jobs = create_jobs_from_templates(run_id, clerk_user_id, ctx, existing_sequences)

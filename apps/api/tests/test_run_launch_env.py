@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from rlx_api.job_templates import _build_repo_install_config
 from rlx_api.celery_app.executors.ssh import SSHCommandExecutor
 from rlx_api.celery_app.tasks.repo_tasks import (
     _maybe_wrap_with_wandb_setup,
@@ -145,3 +146,21 @@ class PrimeRLWandbSetupTests(unittest.TestCase):
         )
 
         self.assertEqual(wrapped_command, original_command)
+
+
+class RepoInstallConfigTests(unittest.TestCase):
+    def test_uses_repo_root_install_when_env_path_is_missing(self) -> None:
+        config = _build_repo_install_config({})
+
+        self.assertEqual(
+            config["command"],
+            "source $HOME/.local/bin/env && uv pip install -e /workspace/repo",
+        )
+
+    def test_uses_nested_env_install_path_when_configured(self) -> None:
+        config = _build_repo_install_config({"env_path": "environments/ascii_align"})
+
+        self.assertEqual(
+            config["command"],
+            "source $HOME/.local/bin/env && uv pip install -e /workspace/repo/environments/ascii_align",
+        )

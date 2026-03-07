@@ -36,6 +36,7 @@ export interface RlxConfigEntry {
   inference: string | null;
   orchestrator: string | null;
   trainer: string | null;
+  env_path: string | null;
   env_vars: Record<string, string> | null;
 }
 

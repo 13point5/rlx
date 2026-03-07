@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import posixpath
 import re
 import tomllib
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rlx_api.database import GitHubConnection
@@ -57,6 +59,50 @@ class TokenData:
     access_token: str
     refresh_token: str | None
     expires_at: datetime | None
+
+
+def _normalize_repo_relative_path(value: str) -> str:
+    """Validate and normalize a repo-relative POSIX path from rlx.toml."""
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("path cannot be empty")
+    if normalized.startswith("/"):
+        raise ValueError("path must be relative to the repository root")
+
+    normalized = posixpath.normpath(normalized)
+    if normalized in {".", ".."} or normalized.startswith("../"):
+        raise ValueError("path must resolve inside the repository root")
+
+    return normalized
+
+
+class RlxConfigEntry(BaseModel):
+    """A single validated config entry from rlx.toml."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    description: str | None = None
+    config: str | None = None
+    inference: str | None = None
+    orchestrator: str | None = None
+    trainer: str | None = None
+    env_path: str | None = None
+    env_vars: dict[str, str] | None = None
+
+    @field_validator("config", "inference", "orchestrator", "trainer", "env_path")
+    @classmethod
+    def validate_repo_relative_paths(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_repo_relative_path(value)
+
+
+class RlxConfigResponse(BaseModel):
+    """Response for fetching rlx.toml configuration."""
+
+    configs: list[RlxConfigEntry]
+    found: bool  # Whether rlx.toml exists in the repo
 
 
 async def exchange_code_for_tokens(code: str) -> TokenData | None:
@@ -659,27 +705,6 @@ async def fetch_repo_branches(
     )
 
 
-@dataclass
-class RlxConfigEntry:
-    """A single config entry from rlx.toml."""
-
-    name: str
-    description: str | None
-    config: str | None  # Single combined config path
-    inference: str | None
-    orchestrator: str | None
-    trainer: str | None
-    env_vars: dict[str, str] | None  # Environment variables for the run
-
-
-@dataclass
-class RlxConfigResponse:
-    """Response for fetching rlx.toml configuration."""
-
-    configs: list[RlxConfigEntry]
-    found: bool  # Whether rlx.toml exists in the repo
-
-
 async def repo_file_exists(
     access_token: str,
     owner: str,
@@ -725,6 +750,23 @@ async def repo_file_exists(
         raise GitHubAPIError(f"GitHub API error: {response.status_code}")
 
     return True
+
+
+def parse_rlx_config(content: str) -> RlxConfigResponse:
+    """Parse and validate rlx.toml content."""
+    toml_data = tomllib.loads(content)
+    config_entries: list[RlxConfigEntry] = []
+
+    for name, entry in toml_data.items():
+        if not isinstance(entry, dict):
+            continue
+
+        try:
+            config_entries.append(RlxConfigEntry(name=name, **entry))
+        except ValidationError as exc:
+            logger.warning("Skipping invalid rlx.toml entry '%s': %s", name, exc)
+
+    return RlxConfigResponse(configs=config_entries, found=True)
 
 
 async def fetch_rlx_config(
@@ -787,29 +829,8 @@ async def fetch_rlx_config(
     content_base64 = data.get("content", "")
     try:
         content_bytes = base64.b64decode(content_base64)
-        toml_data = tomllib.loads(content_bytes.decode("utf-8"))
+        return parse_rlx_config(content_bytes.decode("utf-8"))
     except Exception as e:
         logger.warning(f"Failed to parse rlx.toml: {e}")
         # Return found=True but empty configs if parsing fails
         return RlxConfigResponse(configs=[], found=True)
-
-    # Parse each top-level section as a config entry
-    config_entries: list[RlxConfigEntry] = []
-
-    for name, entry in toml_data.items():
-        if not isinstance(entry, dict):
-            continue
-
-        config_entries.append(
-            RlxConfigEntry(
-                name=name,
-                description=entry.get("description"),
-                config=entry.get("config"),
-                inference=entry.get("inference"),
-                orchestrator=entry.get("orchestrator"),
-                trainer=entry.get("trainer"),
-                env_vars=entry.get("env_vars"),
-            )
-        )
-
-    return RlxConfigResponse(configs=config_entries, found=True)

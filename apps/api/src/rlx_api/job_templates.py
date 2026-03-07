@@ -46,6 +46,20 @@ def _build_prime_rl_launch_config(ctx: dict[str, Any]) -> dict[str, Any]:
     return job_config
 
 
+def _build_repo_install_config(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Build the editable install command for the repo or nested env package."""
+    env_path = ctx.get("env_path")
+    install_target = "/workspace/repo"
+    if isinstance(env_path, str) and env_path:
+        install_target = _resolve_repo_relative_path(env_path)
+
+    return {
+        "command": f"source $HOME/.local/bin/env && uv pip install -e {shlex.quote(install_target)}",
+        "working_dir": "/workspace/prime-rl",
+        "timeout_seconds": None,
+    }
+
+
 # Job template definitions - reused in create_run and sync_jobs
 # Each template has a sequence, job_type, and get_config function that takes a context dict
 JOB_TEMPLATES = [
@@ -95,11 +109,7 @@ JOB_TEMPLATES = [
     {
         "sequence": 5,
         "job_type": JobType.CUSTOM_COMMAND,
-        "get_config": lambda ctx: {
-            "command": "source $HOME/.local/bin/env && uv pip install -e /workspace/repo",
-            "working_dir": "/workspace/prime-rl",
-            "timeout_seconds": None,
-        },
+        "get_config": _build_repo_install_config,
     },
     {
         "sequence": 6,
