@@ -57,8 +57,7 @@ At a high level, RLX sits between the browser UI, the application backend, and t
 
 ```mermaid
 flowchart LR
-  Browser["Browser"] --> Web["Next.js web app"]
-  Web --> Actions["Server actions"]
+  Web["Next.js web app"] --> Actions["Server actions"]
   Actions --> API["FastAPI API"]
   API --> Postgres["PostgreSQL"]
   API --> Redis["Redis"]
