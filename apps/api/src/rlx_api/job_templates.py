@@ -36,6 +36,7 @@ def _build_prime_rl_launch_config(ctx: dict[str, Any]) -> dict[str, Any]:
         ),
         "working_dir": "/workspace/prime-rl",
         "timeout_seconds": None,
+        "inject_wandb_api_key": True,
     }
 
     env_vars = ctx.get("env_vars")

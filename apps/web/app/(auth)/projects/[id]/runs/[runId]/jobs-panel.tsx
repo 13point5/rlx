@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Check,
   Circle,
   Clock,
   Loader2,
@@ -13,6 +14,7 @@ import {
   FolderGit2,
   FolderOpen,
   Terminal,
+  Copy,
   RotateCcw,
   RefreshCw,
 } from "lucide-react";
@@ -172,6 +174,40 @@ function JobStatusBadge({ status }: { status: JobStatus }) {
   );
 }
 
+function CopyTextButton({
+  text,
+  label,
+}: {
+  text: string;
+  label: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error(`Failed to copy ${label}:`, error);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="ghost"
+      className="h-5 w-5"
+      onClick={handleCopy}
+      aria-label={`Copy ${label}`}
+      title={copied ? `${label} copied` : `Copy ${label}`}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </Button>
+  );
+}
+
 function JobItem({
   job,
   runId,
@@ -326,7 +362,10 @@ function JobItem({
           {/* Error message */}
           {job.error_message && (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-destructive">Error</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-medium text-destructive">Error</p>
+                <CopyTextButton text={job.error_message} label="job error" />
+              </div>
               <TerminalOutput
                 text={job.error_message}
                 tone="stderr"
@@ -394,7 +433,13 @@ function JobItem({
                   {/* Stdout */}
                   {cmd.stdout && (
                     <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">Output</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground">Output</p>
+                        <CopyTextButton
+                          text={cmd.stdout}
+                          label={`command ${idx + 1} output`}
+                        />
+                      </div>
                       <TerminalOutput text={cmd.stdout} className="max-h-48" />
                     </div>
                   )}
@@ -402,7 +447,13 @@ function JobItem({
                   {/* Stderr - show for all commands */}
                   {cmd.stderr && (
                     <div className="space-y-1">
-                      <p className="text-xs text-orange-500">Stderr</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-orange-500">Stderr</p>
+                        <CopyTextButton
+                          text={cmd.stderr}
+                          label={`command ${idx + 1} stderr`}
+                        />
+                      </div>
                       <TerminalOutput
                         text={cmd.stderr}
                         tone="stderr"

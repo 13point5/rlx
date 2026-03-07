@@ -98,23 +98,12 @@ def create_wandb_api_key_secret(*, clerk_user_id: str, api_key: str) -> str:
     return arn
 
 
-def get_private_key_secret(secret_arn: str) -> str:
-    """
-    Retrieve a private key from AWS Secrets Manager.
-
-    Args:
-        secret_arn: The ARN of the secret to retrieve
-
-    Returns:
-        The private key string
-
-    Raises:
-        SecretsManagerError: If the secret cannot be retrieved
-    """
+def get_secret_string(secret_id: str) -> str:
+    """Retrieve a string secret from AWS Secrets Manager by ARN or name."""
     client = _get_client()
     try:
-        logger.info(f"Retrieving secret {secret_arn}")
-        response = client.get_secret_value(SecretId=secret_arn)
+        logger.info(f"Retrieving secret {secret_id}")
+        response = client.get_secret_value(SecretId=secret_id)
         secret_string = response.get("SecretString")
         if not secret_string:
             raise SecretsManagerError("Secret does not contain a string value")
@@ -129,6 +118,48 @@ def get_private_key_secret(secret_arn: str) -> str:
     except BotoCoreError as exc:
         logger.error(f"AWS BotoCore error: {exc}")
         raise SecretsManagerError(str(exc))
+
+
+def get_secret_string_if_exists(secret_id: str) -> Optional[str]:
+    """Retrieve a string secret when it exists, otherwise return None."""
+    client = _get_client()
+    try:
+        logger.info(f"Retrieving secret {secret_id}")
+        response = client.get_secret_value(SecretId=secret_id)
+        secret_string = response.get("SecretString")
+        if not secret_string:
+            raise SecretsManagerError("Secret does not contain a string value")
+        return secret_string
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        if error_code == "ResourceNotFoundException":
+            return None
+        error_message = exc.response.get("Error", {}).get("Message", str(exc))
+        logger.error(
+            f"AWS Secrets Manager error: code={error_code}, message={error_message}"
+        )
+        raise SecretsManagerError(error_message)
+    except BotoCoreError as exc:
+        logger.error(f"AWS BotoCore error: {exc}")
+        raise SecretsManagerError(str(exc))
+
+
+def get_private_key_secret(secret_arn: str) -> str:
+    """
+    Retrieve a private key from AWS Secrets Manager.
+
+    Args:
+        secret_arn: The ARN of the secret to retrieve
+
+    Returns:
+        The private key string
+    """
+    return get_secret_string(secret_arn)
+
+
+def get_wandb_api_key_secret(clerk_user_id: str) -> Optional[str]:
+    """Retrieve the user's W&B API key if it exists."""
+    return get_secret_string_if_exists(wandb_secret_name(clerk_user_id))
 
 
 def delete_private_key_secret(secret_arn: str) -> None:

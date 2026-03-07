@@ -3,6 +3,8 @@
 import asyncio
 import inspect
 import logging
+import re
+import shlex
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -17,6 +19,7 @@ from rlx_api.celery_app.executors.base import (
 )
 
 logger = logging.getLogger(__name__)
+ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class SSHCommandExecutor(CommandExecutor):
@@ -133,18 +136,25 @@ class SSHCommandExecutor(CommandExecutor):
         command: str,
         working_dir: str | None = None,
         env: dict[str, str] | None = None,
+        *,
+        redact_env: bool = False,
     ) -> str:
         """Build the full command with working directory and environment."""
-        full_command = command
-
+        parts: list[str] = []
         if working_dir:
-            full_command = f"cd {working_dir} && {command}"
+            parts.append(f"cd {shlex.quote(working_dir)}")
 
         if env:
-            env_prefix = " ".join(f'{k}="{v}"' for k, v in env.items())
-            full_command = f"{env_prefix} {full_command}"
+            env_exports: list[str] = []
+            for key, value in env.items():
+                if not ENV_VAR_NAME_PATTERN.fullmatch(key):
+                    raise ValueError(f"Invalid environment variable name: {key}")
+                rendered_value = "[REDACTED]" if redact_env else value
+                env_exports.append(f"export {key}={shlex.quote(rendered_value)}")
+            parts = env_exports + parts
 
-        return full_command
+        parts.append(command)
+        return " && ".join(parts)
 
     async def execute(
         self,
@@ -218,8 +228,14 @@ class SSHCommandExecutor(CommandExecutor):
         try:
             conn = await self._get_connection()
             full_command = self._build_full_command(command, working_dir, env)
+            logged_command = self._build_full_command(
+                command,
+                working_dir,
+                env,
+                redact_env=True,
+            )
 
-            logger.info(f"Executing command: {full_command[:100]}...")
+            logger.info(f"Executing command: {logged_command[:100]}...")
 
             async with conn.create_process(full_command) as process:
                 stdout_task = asyncio.create_task(read_stream(process.stdout, stdout_parts))
@@ -303,8 +319,14 @@ class SSHCommandExecutor(CommandExecutor):
         """Execute a command and yield output as it streams."""
         conn = await self._get_connection()
         full_command = self._build_full_command(command, working_dir, env)
+        logged_command = self._build_full_command(
+            command,
+            working_dir,
+            env,
+            redact_env=True,
+        )
 
-        logger.info(f"Starting streaming command: {full_command[:100]}...")
+        logger.info(f"Starting streaming command: {logged_command[:100]}...")
 
         async with conn.create_process(full_command) as process:
             async for line in process.stdout:

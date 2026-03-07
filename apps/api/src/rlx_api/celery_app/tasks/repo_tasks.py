@@ -2,7 +2,10 @@
 
 import asyncio
 import logging
+import re
+import shlex
 from datetime import datetime, timezone
+from typing import Any
 
 from rlx_api.celery_app import celery_app
 from rlx_api.celery_app.config import settings
@@ -12,6 +15,104 @@ from rlx_api.celery_app.tasks.base import DatabaseTask
 logger = logging.getLogger(__name__)
 
 LIVE_OUTPUT_FLUSH_INTERVAL_SECONDS = 5.0
+PRIME_RL_COMMAND_PATTERN = re.compile(r"uv run rl @ (?P<config_path>\S+)")
+
+
+def _is_prime_rl_launch_job(job_config: dict[str, Any]) -> bool:
+    """Identify the final Prime RL launch step, including pre-flagged jobs."""
+    if job_config.get("inject_wandb_api_key") is True:
+        return True
+
+    command = job_config.get("command")
+    working_dir = job_config.get("working_dir")
+    return (
+        isinstance(command, str)
+        and isinstance(working_dir, str)
+        and working_dir == "/workspace/prime-rl"
+        and "uv run rl @" in command
+    )
+
+
+def _resolve_custom_command_env(
+    job_config: dict[str, Any],
+    *,
+    clerk_user_id: str,
+) -> dict[str, str] | None:
+    """Resolve configured env vars and optionally inject the user's W&B API key."""
+    from rlx_api.services.aws_secrets_manager import (
+        SecretsManagerError,
+        get_wandb_api_key_secret,
+    )
+
+    raw_env = job_config.get("env")
+    if raw_env is None:
+        env: dict[str, str] = {}
+    elif isinstance(raw_env, dict):
+        env = {}
+        for key, value in raw_env.items():
+            if not isinstance(key, str):
+                raise ValueError("Environment variable names must be strings")
+            env[key] = "" if value is None else str(value)
+    else:
+        raise ValueError("env must be an object when provided in job config")
+
+    if _is_prime_rl_launch_job(job_config):
+        try:
+            wandb_api_key = get_wandb_api_key_secret(clerk_user_id)
+        except SecretsManagerError as exc:
+            raise ValueError(f"Failed to retrieve W&B API key: {exc.message}") from exc
+
+        if wandb_api_key:
+            env["WANDB_API_KEY"] = wandb_api_key
+
+    return env or None
+
+
+def _extract_prime_rl_config_path(job_config: dict[str, Any]) -> str | None:
+    """Extract the Prime RL config path from the launch command when present."""
+    command = job_config.get("command")
+    if not isinstance(command, str):
+        return None
+
+    match = PRIME_RL_COMMAND_PATTERN.search(command)
+    if not match:
+        return None
+
+    return match.group("config_path")
+
+
+def _maybe_wrap_with_wandb_setup(
+    command: str,
+    job_config: dict[str, Any],
+) -> str:
+    """
+    Preflight W&B setup for Prime RL launch jobs.
+
+    Prime RL starts trainer/orchestrator as subprocesses. Logging in explicitly
+    before `uv run rl` ensures W&B auth is available even if env propagation
+    across that subprocess tree is finicky.
+    """
+    if not _is_prime_rl_launch_job(job_config):
+        return command
+
+    config_path = _extract_prime_rl_config_path(job_config)
+    if not config_path:
+        return command
+
+    login_snippet = (
+        "import os, wandb; "
+        "key = os.environ.get('WANDB_API_KEY'); "
+        "assert key, 'WANDB_API_KEY missing for Prime RL config with [wandb]'; "
+        "wandb.login(key=key, relogin=True); "
+        "print('W&B login configured from WANDB_API_KEY')"
+    )
+    wandb_setup_command = (
+        f"if grep -Eq '^[[:space:]]*\\[wandb\\][[:space:]]*$' {shlex.quote(config_path)}; then "
+        "source $HOME/.local/bin/env && "
+        f"uv run python -c {shlex.quote(login_snippet)}; "
+        "fi"
+    )
+    return f"{wandb_setup_command} && {command}"
 
 
 def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
@@ -505,10 +606,14 @@ def run_custom_command(self, job_id: int):
             command = config.get("command")
             if not command:
                 raise ValueError("command is required in job config")
+            command = _maybe_wrap_with_wandb_setup(command, config)
 
             working_dir = config.get("working_dir", "/workspace")
             timeout = config.get("timeout_seconds", settings.command_timeout)
-            env = config.get("env")
+            env = _resolve_custom_command_env(
+                config,
+                clerk_user_id=job.clerk_user_id,
+            )
 
             # Get executor
             executor = get_executor_for_run(session, job.run_id)
