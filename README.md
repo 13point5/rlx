@@ -49,6 +49,12 @@ It lets you import GitHub repositories, choose an `rlx.toml` config, provision P
       <p><strong>Settings</strong><br/>Manage GitHub connectivity and SSH keys required for provisioning and pod access.</p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/screenshots/wandb-charts.png" alt="Weights and Biases charts" />
+      <p><strong>Weights &amp; Biases</strong><br/>Open experiment dashboards for training curves, reward signals, and run-level monitoring.</p>
+    </td>
+  </tr>
 </table>
 
 ## How it works
