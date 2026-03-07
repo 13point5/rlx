@@ -211,3 +211,160 @@ class DatabaseTask(Task):
                 cmd.duration_ms = duration_ms
                 cmd.completed_at = datetime.now(timezone.utc)
                 session.commit()
+
+    def ensure_run_log_stream(
+        self,
+        run_id: int,
+        *,
+        source: str,
+        display_name: str,
+        remote_path: str | None = None,
+        status: str = "ACTIVE",
+    ) -> int:
+        """Create or update a persisted run log stream and return its id."""
+        from rlx_api.database import RunLogStream
+
+        with self.get_db_session() as session:
+            stream = (
+                session.query(RunLogStream)
+                .filter(RunLogStream.run_id == run_id, RunLogStream.source == source)
+                .first()
+            )
+
+            if stream is None:
+                stream = RunLogStream(
+                    run_id=run_id,
+                    source=source,
+                    display_name=display_name,
+                    remote_path=remote_path,
+                    status=status,
+                )
+                session.add(stream)
+                session.commit()
+                session.refresh(stream)
+                return stream.id
+
+            if remote_path and stream.remote_path != remote_path:
+                stream.remote_path = remote_path
+            stream.display_name = display_name
+            stream.status = status
+            stream.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            return stream.id
+
+    def append_run_log_chunk(
+        self,
+        run_id: int,
+        *,
+        source: str,
+        display_name: str,
+        content: str,
+        start_offset: int,
+        end_offset: int,
+        remote_path: str | None = None,
+        status: str = "ACTIVE",
+    ) -> int:
+        """Append text to a persisted run log stream and return the chunk sequence."""
+        from rlx_api.database import RunLogChunk, RunLogStream
+
+        if not content:
+            return -1
+
+        with self.get_db_session() as session:
+            stream = (
+                session.query(RunLogStream)
+                .filter(RunLogStream.run_id == run_id, RunLogStream.source == source)
+                .first()
+            )
+            if stream is None:
+                stream = RunLogStream(
+                    run_id=run_id,
+                    source=source,
+                    display_name=display_name,
+                    remote_path=remote_path,
+                    status=status,
+                )
+                session.add(stream)
+                session.flush()
+
+            next_sequence = (
+                stream.last_chunk_sequence + 1
+                if stream.last_chunk_sequence is not None
+                else 0
+            )
+            chunk = RunLogChunk(
+                stream_id=stream.id,
+                sequence=next_sequence,
+                start_offset=start_offset,
+                end_offset=end_offset,
+                content=content,
+            )
+            session.add(chunk)
+
+            stream.display_name = display_name
+            if remote_path and stream.remote_path != remote_path:
+                stream.remote_path = remote_path
+            stream.status = status
+            stream.last_remote_offset = end_offset
+            stream.last_chunk_sequence = next_sequence
+            stream.updated_at = datetime.now(timezone.utc)
+            session.commit()
+
+            return next_sequence
+
+    def mark_run_log_stream(
+        self,
+        run_id: int,
+        *,
+        source: str,
+        status: str,
+        last_remote_offset: int | None = None,
+    ) -> None:
+        """Update terminal state for a persisted run log stream."""
+        from rlx_api.database import RunLogStream
+
+        with self.get_db_session() as session:
+            stream = (
+                session.query(RunLogStream)
+                .filter(RunLogStream.run_id == run_id, RunLogStream.source == source)
+                .first()
+            )
+            if not stream:
+                return
+
+            stream.status = status
+            if last_remote_offset is not None:
+                stream.last_remote_offset = last_remote_offset
+            stream.updated_at = datetime.now(timezone.utc)
+            if status in {"COMPLETE", "ERROR"}:
+                stream.completed_at = datetime.now(timezone.utc)
+            session.commit()
+
+    def set_run_wandb_run(
+        self,
+        run_id: int,
+        *,
+        source: str,
+        run_url: str,
+        wandb_run_id: str,
+    ) -> None:
+        """Persist structured W&B metadata on the run row."""
+        from rlx_api.database import Run
+        from rlx_api.run_observability import WandbRunMetadata, merge_wandb_run_metadata
+
+        with self.get_db_session() as session:
+            run = session.query(Run).filter(Run.id == run_id).first()
+            if not run:
+                return
+
+            monitoring = merge_wandb_run_metadata(
+                run.monitoring,
+                source=source,
+                metadata=WandbRunMetadata(run_id=wandb_run_id, url=run_url),
+            )
+            if monitoring == (run.monitoring or {}):
+                return
+
+            run.monitoring = monitoring
+            run.updated_at = datetime.now(timezone.utc)
+            session.commit()

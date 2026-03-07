@@ -1,7 +1,10 @@
 """Repository and command execution Celery tasks."""
 
 import asyncio
+import base64
+from dataclasses import dataclass
 import logging
+import posixpath
 import re
 import shlex
 from datetime import datetime, timezone
@@ -11,11 +14,27 @@ from rlx_api.celery_app import celery_app
 from rlx_api.celery_app.config import settings
 from rlx_api.celery_app.executors.ssh import SSHCommandExecutor
 from rlx_api.celery_app.tasks.base import DatabaseTask
+from rlx_api.run_observability import (
+    build_prime_rl_log_stream_specs,
+    extract_wandb_run_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
 LIVE_OUTPUT_FLUSH_INTERVAL_SECONDS = 5.0
+RUN_LOG_POLL_INTERVAL_SECONDS = 5.0
 PRIME_RL_COMMAND_PATTERN = re.compile(r"uv run rl @ (?P<config_path>\S+)")
+
+
+@dataclass
+class MirroredRunLogStream:
+    """Tracking state for a persisted run log stream while a job is active."""
+
+    source: str
+    display_name: str
+    remote_path: str | None
+    registered: bool
+    last_remote_offset: int = 0
 
 
 def _is_prime_rl_launch_job(job_config: dict[str, Any]) -> bool:
@@ -113,6 +132,293 @@ def _maybe_wrap_with_wandb_setup(
         "fi"
     )
     return f"{wandb_setup_command} && {command}"
+
+
+def _build_prime_rl_output_dir_command(config_path: str) -> str:
+    """Build a remote command that prints the resolved Prime RL output directory."""
+    snippet = (
+        "import pathlib, sys, tomllib; "
+        "config = tomllib.loads(pathlib.Path(sys.argv[1]).read_text()); "
+        "print(config.get('output_dir') or 'outputs')"
+    )
+    return (
+        "source $HOME/.local/bin/env && "
+        f"uv run python -c {shlex.quote(snippet)} {shlex.quote(config_path)}"
+    )
+
+
+async def _resolve_prime_rl_output_dir(
+    executor: SSHCommandExecutor,
+    *,
+    working_dir: str,
+    config_path: str,
+) -> str:
+    """Resolve the Prime RL output dir from the config, falling back to ./outputs."""
+    fallback_output_dir = posixpath.normpath(posixpath.join(working_dir, "outputs"))
+    result = await executor.execute(
+        _build_prime_rl_output_dir_command(config_path),
+        working_dir=working_dir,
+        timeout_seconds=30,
+    )
+    if not result.success:
+        logger.warning(
+            "Falling back to default Prime RL output dir after parse failure: %s",
+            result.stderr or result.error_message,
+        )
+        return fallback_output_dir
+
+    raw_value = result.stdout.strip().splitlines()
+    output_dir = raw_value[-1].strip() if raw_value else "outputs"
+    if not output_dir:
+        return fallback_output_dir
+    if posixpath.isabs(output_dir):
+        return posixpath.normpath(output_dir)
+    return posixpath.normpath(posixpath.join(working_dir, output_dir))
+
+
+def _build_run_log_fetch_command(path: str, offset: int) -> str:
+    """Build a remote command that returns current size plus any new bytes as base64."""
+    quoted_path = shlex.quote(path)
+    return (
+        f"if [ -f {quoted_path} ]; then "
+        f"size=$(LC_ALL=C wc -c < {quoted_path}); "
+        "printf '%s\\n' \"$size\"; "
+        f"if [ \"$size\" -gt {offset} ]; then "
+        f"dd if={quoted_path} bs=1 skip={offset} status=none | base64 | tr -d '\\n'; "
+        "fi; "
+        "fi"
+    )
+
+
+def _parse_run_log_fetch_output(payload: str) -> tuple[int, str] | None:
+    """Parse the output from _build_run_log_fetch_command."""
+    stripped = payload.rstrip()
+    if not stripped:
+        return None
+
+    end_offset_line, _, encoded_content = stripped.partition("\n")
+    try:
+        end_offset = int(end_offset_line.strip())
+    except ValueError as exc:
+        raise ValueError(f"Unexpected run log payload: {payload!r}") from exc
+
+    if not encoded_content:
+        return end_offset, ""
+
+    content = base64.b64decode(encoded_content.encode("ascii")).decode(
+        "utf-8",
+        errors="replace",
+    )
+    return end_offset, content
+
+
+async def _append_run_log_content(
+    task: DatabaseTask,
+    *,
+    run_id: int,
+    source: str,
+    display_name: str,
+    content: str,
+    start_offset: int,
+    end_offset: int,
+    remote_path: str | None,
+) -> None:
+    """Append new content to a persisted run log stream and capture W&B URLs."""
+    if not content:
+        return
+
+    await asyncio.to_thread(
+        task.append_run_log_chunk,
+        run_id,
+        source=source,
+        display_name=display_name,
+        content=content,
+        start_offset=start_offset,
+        end_offset=end_offset,
+        remote_path=remote_path,
+    )
+
+    if source not in {"orchestrator", "trainer"}:
+        return
+
+    metadata = extract_wandb_run_metadata(content)
+    if metadata is None:
+        return
+
+    await asyncio.to_thread(
+        task.set_run_wandb_run,
+        run_id,
+        source=source,
+        run_url=metadata.url,
+        wandb_run_id=metadata.run_id,
+    )
+
+
+async def _ensure_prime_rl_log_streams(
+    task: DatabaseTask,
+    *,
+    run_id: int,
+    output_dir: str,
+) -> dict[str, MirroredRunLogStream]:
+    """Create the surfaced Prime RL run log streams tracked by RLX."""
+    stream_states: dict[str, MirroredRunLogStream] = {}
+
+    for spec in build_prime_rl_log_stream_specs(output_dir):
+        required = spec.source in {"orchestrator", "trainer"}
+        if required:
+            await asyncio.to_thread(
+                task.ensure_run_log_stream,
+                run_id,
+                source=spec.source,
+                display_name=spec.display_name,
+                remote_path=spec.remote_path,
+            )
+
+        stream_states[spec.source] = MirroredRunLogStream(
+            source=spec.source,
+            display_name=spec.display_name,
+            remote_path=spec.remote_path,
+            registered=required,
+        )
+
+    return stream_states
+
+
+async def _poll_prime_rl_log_streams(
+    task: DatabaseTask,
+    executor: SSHCommandExecutor,
+    *,
+    run_id: int,
+    stream_states: dict[str, MirroredRunLogStream],
+    stop_event: asyncio.Event,
+) -> None:
+    """Mirror surfaced Prime RL log files into persisted run log streams."""
+    while not stop_event.is_set():
+        for stream in stream_states.values():
+            if stream.remote_path is None:
+                continue
+
+            try:
+                result = await executor.execute(
+                    _build_run_log_fetch_command(stream.remote_path, stream.last_remote_offset),
+                    timeout_seconds=30,
+                )
+                if not result.success:
+                    logger.debug(
+                        "Skipping run log poll for %s after remote read failure: %s",
+                        stream.source,
+                        result.stderr or result.error_message,
+                    )
+                    continue
+
+                parsed = _parse_run_log_fetch_output(result.stdout)
+                if parsed is None:
+                    continue
+
+                end_offset, content = parsed
+                if not stream.registered:
+                    await asyncio.to_thread(
+                        task.ensure_run_log_stream,
+                        run_id,
+                        source=stream.source,
+                        display_name=stream.display_name,
+                        remote_path=stream.remote_path,
+                    )
+                    stream.registered = True
+
+                if end_offset < stream.last_remote_offset:
+                    logger.warning(
+                        "Run log stream %s shrank from %s to %s; restarting mirror offset",
+                        stream.source,
+                        stream.last_remote_offset,
+                        end_offset,
+                    )
+                    stream.last_remote_offset = 0
+                    continue
+
+                if content:
+                    await _append_run_log_content(
+                        task,
+                        run_id=run_id,
+                        source=stream.source,
+                        display_name=stream.display_name,
+                        content=content,
+                        start_offset=stream.last_remote_offset,
+                        end_offset=end_offset,
+                        remote_path=stream.remote_path,
+                    )
+
+                stream.last_remote_offset = end_offset
+            except Exception:
+                logger.warning(
+                    "Failed to mirror Prime RL log stream %s",
+                    stream.source,
+                    exc_info=True,
+                )
+                continue
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=RUN_LOG_POLL_INTERVAL_SECONDS)
+        except TimeoutError:
+            continue
+
+
+async def _finalize_prime_rl_log_streams(
+    task: DatabaseTask,
+    executor: SSHCommandExecutor,
+    *,
+    run_id: int,
+    stream_states: dict[str, MirroredRunLogStream],
+    terminal_status: str,
+) -> None:
+    """Drain remaining remote log content and mark run log streams complete."""
+    for stream in stream_states.values():
+        if stream.remote_path is not None:
+            try:
+                result = await executor.execute(
+                    _build_run_log_fetch_command(stream.remote_path, stream.last_remote_offset),
+                    timeout_seconds=30,
+                )
+                if result.success:
+                    parsed = _parse_run_log_fetch_output(result.stdout)
+                    if parsed is not None:
+                        end_offset, content = parsed
+                        if not stream.registered:
+                            await asyncio.to_thread(
+                                task.ensure_run_log_stream,
+                                run_id,
+                                source=stream.source,
+                                display_name=stream.display_name,
+                                remote_path=stream.remote_path,
+                            )
+                            stream.registered = True
+                        if content:
+                            await _append_run_log_content(
+                                task,
+                                run_id=run_id,
+                                source=stream.source,
+                                display_name=stream.display_name,
+                                content=content,
+                                start_offset=stream.last_remote_offset,
+                                end_offset=end_offset,
+                                remote_path=stream.remote_path,
+                            )
+                        stream.last_remote_offset = end_offset
+            except Exception:
+                logger.warning(
+                    "Failed final drain for Prime RL log stream %s",
+                    stream.source,
+                    exc_info=True,
+                )
+
+        if stream.registered:
+            await asyncio.to_thread(
+                task.mark_run_log_stream,
+                run_id,
+                source=stream.source,
+                status=terminal_status,
+                last_remote_offset=stream.last_remote_offset,
+            )
 
 
 def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
@@ -606,6 +912,8 @@ def run_custom_command(self, job_id: int):
             command = config.get("command")
             if not command:
                 raise ValueError("command is required in job config")
+            is_prime_rl_launch = _is_prime_rl_launch_job(config)
+            config_path = _extract_prime_rl_config_path(config) if is_prime_rl_launch else None
             command = _maybe_wrap_with_wandb_setup(command, config)
 
             working_dir = config.get("working_dir", "/workspace")
@@ -627,15 +935,74 @@ def run_custom_command(self, job_id: int):
             async def execute_custom():
                 try:
                     logger.info(f"Executing custom command: {command[:100]}...")
-                    return await _execute_recorded_command(
-                        self,
+                    if not is_prime_rl_launch or not config_path:
+                        return await _execute_recorded_command(
+                            self,
+                            executor,
+                            command_id=cmd_id,
+                            command=command,
+                            working_dir=working_dir,
+                            timeout_seconds=timeout,
+                            env=env,
+                        )
+
+                    output_dir = await _resolve_prime_rl_output_dir(
                         executor,
-                        command_id=cmd_id,
-                        command=command,
                         working_dir=working_dir,
-                        timeout_seconds=timeout,
-                        env=env,
+                        config_path=config_path,
                     )
+                    stream_states = await _ensure_prime_rl_log_streams(
+                        self,
+                        run_id=job.run_id,
+                        output_dir=output_dir,
+                    )
+
+                    stop_event = asyncio.Event()
+                    poll_task = asyncio.create_task(
+                        _poll_prime_rl_log_streams(
+                            self,
+                            executor,
+                            run_id=job.run_id,
+                            stream_states=stream_states,
+                            stop_event=stop_event,
+                        )
+                    )
+
+                    result = None
+                    try:
+                        result = await _execute_recorded_command(
+                            self,
+                            executor,
+                            command_id=cmd_id,
+                            command=command,
+                            working_dir=working_dir,
+                            timeout_seconds=timeout,
+                            env=env,
+                        )
+                        return result
+                    finally:
+                        stop_event.set()
+                        poll_error = await asyncio.gather(poll_task, return_exceptions=True)
+                        for error in poll_error:
+                            if isinstance(error, Exception):
+                                logger.warning(
+                                    "Prime RL log poller ended with an error",
+                                    exc_info=(
+                                        type(error),
+                                        error,
+                                        error.__traceback__,
+                                    ),
+                                )
+
+                        await _finalize_prime_rl_log_streams(
+                            self,
+                            executor,
+                            run_id=job.run_id,
+                            stream_states=stream_states,
+                            terminal_status="COMPLETE"
+                            if result and result.success
+                            else "ERROR",
+                        )
                 finally:
                     await executor.close()
 

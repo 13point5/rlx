@@ -13,7 +13,10 @@ import type {
   Project,
   RlxConfigResponse,
   RunInstanceSelection,
+  RunLogResponse,
+  RunLogSource,
   RunRecord,
+  RunObservabilityResponse,
   RunStatusResponse,
   RunTerminateResponse,
   RunStatusBatchResponse,
@@ -803,6 +806,55 @@ export async function getRun(runId: number): Promise<{
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+export async function getRunObservability(runId: number): Promise<{
+  success: boolean;
+  observability?: RunObservabilityResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(
+      `${API_BASE_URL}/api/runs/${runId}/observability`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data as RunObservabilityResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, observability: result.data };
+}
+
+export async function getRunLog(
+  runId: number,
+  source: RunLogSource,
+  afterSequence?: number
+): Promise<{
+  success: boolean;
+  log?: RunLogResponse;
+  error?: string;
+}> {
+  const result = await authenticatedRequest(async (token) => {
+    const response = await axios.get(`${API_BASE_URL}/api/runs/${runId}/logs/${source}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params:
+        afterSequence === undefined
+          ? undefined
+          : {
+              after_sequence: afterSequence,
+            },
+    });
+    return response.data as RunLogResponse;
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, log: result.data };
 }
 
 export async function getRunStatus(runId: number): Promise<{

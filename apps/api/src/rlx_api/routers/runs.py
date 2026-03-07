@@ -7,7 +7,19 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from rlx_api.database import CommandStatus, Job, JobCommand, JobStatus, Project, Run, RunStatus, UserSshKey
+from rlx_api.database import (
+    CommandStatus,
+    Job,
+    JobCommand,
+    JobStatus,
+    Project,
+    Run,
+    RunLogChunk,
+    RunLogSource,
+    RunLogStream,
+    RunStatus,
+    UserSshKey,
+)
 from rlx_api.deps import (
     CurrentUser,
     DbSession,
@@ -15,6 +27,12 @@ from rlx_api.deps import (
     get_valid_github_token,
 )
 from rlx_api.job_templates import create_jobs_from_templates
+from rlx_api.run_observability import (
+    choose_default_run_log_source,
+    get_run_log_source_label,
+    is_surfaced_run_log_source,
+    order_run_log_sources,
+)
 from rlx_api.services import github as github_service
 from rlx_api.services.github import (
     GitHubAPIError,
@@ -91,6 +109,7 @@ class RunResponse(BaseModel):
     gpu_count: int
     security: str
     cloud_id: str
+    monitoring: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime | None
 
@@ -118,6 +137,46 @@ class SyncJobsResponse(BaseModel):
     message: str
 
 
+class RunLogStreamSummary(BaseModel):
+    source: str
+    display_name: str
+    status: str
+    latest_sequence: int
+    remote_path: str | None = None
+    updated_at: datetime | None
+    completed_at: datetime | None
+
+
+class WandbRunSummary(BaseModel):
+    run_id: str
+    url: str
+
+
+class RunObservabilityResponse(BaseModel):
+    run_id: int
+    status: str
+    default_source: str | None
+    streams: list[RunLogStreamSummary]
+    wandb: dict[str, WandbRunSummary]
+
+
+class RunLogChunkResponse(BaseModel):
+    sequence: int
+    start_offset: int
+    end_offset: int
+    content: str
+    created_at: datetime
+
+
+class RunLogResponse(BaseModel):
+    run_id: int
+    source: str
+    display_name: str
+    status: str
+    latest_sequence: int
+    chunks: list[RunLogChunkResponse]
+
+
 async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
     result = await db.execute(
         select(Run).where(Run.id == run_id, Run.clerk_user_id == clerk_user_id)
@@ -128,6 +187,37 @@ async def get_run_or_404(run_id: int, clerk_user_id: str, db: DbSession) -> Run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     return run
+
+
+def run_log_stream_to_summary(stream: RunLogStream) -> RunLogStreamSummary:
+    """Serialize a persisted run log stream for the UI."""
+    return RunLogStreamSummary(
+        source=stream.source,
+        display_name=stream.display_name or get_run_log_source_label(stream.source),
+        status=stream.status,
+        latest_sequence=stream.last_chunk_sequence,
+        remote_path=stream.remote_path,
+        updated_at=stream.updated_at,
+        completed_at=stream.completed_at,
+    )
+
+
+def get_run_wandb_summaries(run: Run) -> dict[str, WandbRunSummary]:
+    """Extract persisted W&B run links from run.monitoring."""
+    raw_wandb = (run.monitoring or {}).get("wandb")
+    if not isinstance(raw_wandb, dict):
+        return {}
+
+    summaries: dict[str, WandbRunSummary] = {}
+    for source, payload in raw_wandb.items():
+        if not isinstance(payload, dict):
+            continue
+        run_id = payload.get("run_id")
+        url = payload.get("url")
+        if isinstance(run_id, str) and isinstance(url, str):
+            summaries[source] = WandbRunSummary(run_id=run_id, url=url)
+
+    return summaries
 
 
 async def resolve_run_config(
@@ -497,6 +587,84 @@ async def get_run(run_id: int, user: CurrentUser, db: DbSession):
     clerk_user_id = user.get("sub")
     run = await get_run_or_404(run_id, clerk_user_id, db)
     return run
+
+
+@router.get("/{run_id}/observability", response_model=RunObservabilityResponse)
+async def get_run_observability(run_id: int, user: CurrentUser, db: DbSession):
+    """Get persisted run log metadata and surfaced W&B links for a run."""
+    clerk_user_id = user.get("sub")
+    run = await get_run_or_404(run_id, clerk_user_id, db)
+
+    result = await db.execute(select(RunLogStream).where(RunLogStream.run_id == run_id))
+    streams = [
+        stream
+        for stream in result.scalars().all()
+        if is_surfaced_run_log_source(stream.source)
+    ]
+
+    source_order = order_run_log_sources([stream.source for stream in streams])
+    stream_by_source = {stream.source: stream for stream in streams}
+    ordered_streams = [run_log_stream_to_summary(stream_by_source[source]) for source in source_order]
+
+    return RunObservabilityResponse(
+        run_id=run.id,
+        status=run.status,
+        default_source=choose_default_run_log_source(source_order),
+        streams=ordered_streams,
+        wandb=get_run_wandb_summaries(run),
+    )
+
+
+@router.get("/{run_id}/logs/{source}", response_model=RunLogResponse)
+async def get_run_log(
+    run_id: int,
+    source: str,
+    user: CurrentUser,
+    db: DbSession,
+    after_sequence: int | None = None,
+):
+    """Get persisted log chunks for a surfaced run log source."""
+    clerk_user_id = user.get("sub")
+    await get_run_or_404(run_id, clerk_user_id, db)
+
+    stream_result = await db.execute(
+        select(RunLogStream).where(
+            RunLogStream.run_id == run_id,
+            RunLogStream.source == source,
+        )
+    )
+    stream = stream_result.scalar_one_or_none()
+    if not stream:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run log not found")
+
+    chunk_query = (
+        select(RunLogChunk)
+        .where(RunLogChunk.stream_id == stream.id)
+        .order_by(RunLogChunk.sequence.asc())
+    )
+    if after_sequence is not None:
+        chunk_query = chunk_query.where(RunLogChunk.sequence > after_sequence)
+
+    chunk_result = await db.execute(chunk_query)
+    chunks = list(chunk_result.scalars().all())
+
+    return RunLogResponse(
+        run_id=run_id,
+        source=stream.source,
+        display_name=stream.display_name or get_run_log_source_label(stream.source),
+        status=stream.status,
+        latest_sequence=stream.last_chunk_sequence,
+        chunks=[
+            RunLogChunkResponse(
+                sequence=chunk.sequence,
+                start_offset=chunk.start_offset,
+                end_offset=chunk.end_offset,
+                content=chunk.content,
+                created_at=chunk.created_at,
+            )
+            for chunk in chunks
+        ],
+    )
 
 
 @router.get("/{run_id}/status", response_model=RunStatusResponse)

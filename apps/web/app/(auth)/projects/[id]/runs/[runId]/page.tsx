@@ -3,6 +3,7 @@ import { ErrorState } from "@/components/error-state";
 import { PageHeading } from "@/components/page-heading";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { JobsPanel } from "./jobs-panel";
+import { RunObservabilityPanel } from "./run-observability-panel";
 import { RunStatusPanel } from "./run-status-panel";
 
 interface RunPageProps {
@@ -10,7 +11,7 @@ interface RunPageProps {
 }
 
 export default async function RunPage({ params }: RunPageProps) {
-  const { id, runId } = await params;
+  const { runId } = await params;
   const runIdNumber = Number(runId);
 
   const runResult = await getRun(runIdNumber);
@@ -46,6 +47,10 @@ export default async function RunPage({ params }: RunPageProps) {
         </Card>
         <RunStatusPanel runId={runIdNumber} initialStatus={run.status} />
       </div>
+      <RunObservabilityPanel
+        runId={runIdNumber}
+        initialRunStatus={run.status}
+      />
       <JobsPanel runId={runIdNumber} runStatus={run.status} />
     </div>
   );

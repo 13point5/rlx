@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -59,6 +60,24 @@ class CommandStatus(StrEnum):
     FAILED = "FAILED"
     TIMEOUT = "TIMEOUT"
     CANCELLED = "CANCELLED"
+
+
+class RunLogSource(StrEnum):
+    """Supported persisted run log sources."""
+
+    ORCHESTRATOR = "orchestrator"
+    TRAINER = "trainer"
+    LAUNCHER = "launcher"
+    INFERENCE = "inference"
+    TEACHER_INFERENCE = "teacher_inference"
+
+
+class RunLogStreamStatus(StrEnum):
+    """Lifecycle for persisted run log streams."""
+
+    ACTIVE = "ACTIVE"
+    COMPLETE = "COMPLETE"
+    ERROR = "ERROR"
 
 
 load_dotenv()
@@ -168,6 +187,7 @@ class Run(Base):
     # Pod connection info (populated when status becomes ACTIVE)
     # Raw SSH connection string from Prime Intellect (e.g., "ssh ubuntu@1.2.3.4 -p 22")
     ssh_connection = Column(String, nullable=True)
+    monitoring = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -251,6 +271,46 @@ class JobCommand(Base):
 
     # Sequence within job
     sequence = Column(Integer, nullable=False, default=0)
+
+
+class RunLogStream(Base):
+    """Metadata for a persisted, user-facing log stream within a run."""
+
+    __tablename__ = "run_log_streams"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("runs.id"), nullable=False, index=True)
+    source = Column(String, nullable=False)
+    display_name = Column(String, nullable=False)
+    remote_path = Column(String, nullable=True)
+    status = Column(String, nullable=False, default=RunLogStreamStatus.ACTIVE)
+    last_remote_offset = Column(BigInteger, nullable=False, default=0)
+    last_chunk_sequence = Column(Integer, nullable=False, default=-1)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (UniqueConstraint("run_id", "source", name="unique_run_log_source"),)
+
+
+class RunLogChunk(Base):
+    """Append-only text chunks for a run log stream."""
+
+    __tablename__ = "run_log_chunks"
+
+    id = Column(Integer, primary_key=True)
+    stream_id = Column(Integer, ForeignKey("run_log_streams.id"), nullable=False, index=True)
+    sequence = Column(Integer, nullable=False)
+    start_offset = Column(BigInteger, nullable=False)
+    end_offset = Column(BigInteger, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (UniqueConstraint("stream_id", "sequence", name="unique_run_log_chunk"),)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

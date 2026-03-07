@@ -145,9 +145,61 @@ export interface RunRecord {
   gpu_count: number;
   security: string;
   cloud_id: string;
+  monitoring: RunMonitoring | null;
   created_at: string;
   updated_at: string | null;
   is_spot?: boolean;
+}
+
+export interface WandbRunLink {
+  run_id: string;
+  url: string;
+}
+
+export interface RunMonitoring {
+  wandb?: Record<string, WandbRunLink>;
+}
+
+export type RunLogSource =
+  | "orchestrator"
+  | "trainer"
+  | "launcher"
+  | "inference"
+  | "teacher_inference";
+
+export interface RunLogStreamSummary {
+  source: RunLogSource;
+  display_name: string;
+  status: string;
+  latest_sequence: number;
+  remote_path: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+}
+
+export interface RunObservabilityResponse {
+  run_id: number;
+  status: string;
+  default_source: RunLogSource | null;
+  streams: RunLogStreamSummary[];
+  wandb: Partial<Record<RunLogSource, WandbRunLink>>;
+}
+
+export interface RunLogChunk {
+  sequence: number;
+  start_offset: number;
+  end_offset: number;
+  content: string;
+  created_at: string;
+}
+
+export interface RunLogResponse {
+  run_id: number;
+  source: RunLogSource;
+  display_name: string;
+  status: string;
+  latest_sequence: number;
+  chunks: RunLogChunk[];
 }
 
 export interface RunStatusItem {

@@ -103,8 +103,8 @@ def check_pending_jobs(self):
         # Find runs that are ACTIVE with pending jobs but no running/queued jobs
         # This catches edge cases where job completion didn't trigger the next one
 
-        active_runs_with_pending = (
-            session.query(Run)
+        active_run_ids = (
+            session.query(Run.id)
             .join(Job, Job.run_id == Run.id)
             .filter(
                 Run.status == RunStatus.ACTIVE,
@@ -112,6 +112,15 @@ def check_pending_jobs(self):
             )
             .distinct()
             .all()
+        )
+        active_run_ids = [run_id for (run_id,) in active_run_ids]
+
+        active_runs_with_pending = (
+            session.query(Run)
+            .filter(Run.id.in_(active_run_ids))
+            .all()
+            if active_run_ids
+            else []
         )
 
         queued_count = 0
