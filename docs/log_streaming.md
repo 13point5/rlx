@@ -1,222 +1,239 @@
-# Log Streaming System Design: 3 Production Approaches
+# Live Job Output Polling
 
-## Context
+## Summary
 
-- RL training jobs run on remote GPU pods via SSH
-- Prime-RL outputs logs to files on the pod
-- Goal: Stream log file updates to frontend in real-time
-- Current stack: FastAPI, Celery, Redis, PostgreSQL, Next.js (polling-based)
+RLX will keep its current API shape and polling-based UI, but it will start
+persisting command output while jobs are still running.
 
----
+The chosen design is:
 
-## Approach 1: Server-Sent Events (SSE) with Tail-Based Polling
+- no new endpoints
+- no WebSockets or SSE
+- no log chunk table
+- no GPU telemetry in this pass
+- keep `GET /api/jobs?run_id=...` for job status
+- keep `GET /api/jobs/{job_id}` for command details
+- update `job_commands.stdout` and `job_commands.stderr` in place while the command runs
 
-**Architecture:**
+The worker keeps the live buffer in memory and periodically replaces the stored
+DB snapshot with the latest full buffer.
 
-```
-┌──────────┐    SSE Stream     ┌──────────────┐   SSH tail -f   ┌─────────┐
-│ Frontend │ ◄──────────────── │   FastAPI    │ ◄────────────── │ GPU Pod │
-│ (Next.js)│    (EventSource)  │   Endpoint   │   (asyncssh)    │ (logs)  │
-└──────────┘                   └──────────────┘                 └─────────┘
-```
+## Why This Approach
 
-**How it works:**
+This is a hobby-project implementation optimized for simplicity:
 
-1. Frontend opens SSE connection to `/api/runs/{runId}/logs/stream`
-2. FastAPI endpoint opens persistent SSH connection to pod
-3. Runs `tail -f /path/to/log.file` via SSH
-4. Streams each new line as SSE event to frontend
+- the UI already knows how to poll
+- the backend already returns `stdout` and `stderr`
+- the job details view already renders terminal output
+- most runs have only one active job at a time
 
-**Implementation:**
+Compared with chunked storage, this avoids:
 
-```python
-# FastAPI endpoint
-@router.get("/runs/{run_id}/logs/stream")
-async def stream_logs(run_id: str):
-    async def generate():
-        async with connect_ssh(pod) as conn:
-            async with conn.create_process("tail -f /workspace/logs/train.log") as proc:
-                async for line in proc.stdout:
-                    yield f"data: {json.dumps({'line': line})}\n\n"
+- an extra table
+- read-time log assembly
+- new API contracts
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
-```
+Compared with append-in-SQL, this avoids duplicate log fragments if a flush is retried.
 
-**Pros:**
+## Architecture
 
-- Simple to implement (native browser API, no library needed)
-- Works through proxies/load balancers
-- Automatic reconnection built into EventSource
-- One-way stream is efficient for logs
+```mermaid
+flowchart LR
+    FE["Frontend run page<br/>JobsPanel"] -->|poll 5s| SA["Next server action<br/>getJobDetails(jobId)"]
+    SA --> API["FastAPI<br/>GET /api/jobs/{job_id}"]
+    API --> DB["Postgres<br/>job_commands.stdout/stderr"]
 
-**Cons:**
+    W["Celery worker<br/>clone/list/custom task"] --> EX["SSHCommandExecutor<br/>create_process(...)"]
+    EX --> OUT["stdout reader"]
+    EX --> ERR["stderr reader"]
 
-- One SSH connection per viewer (doesn't scale with many concurrent viewers)
-- Connection drops require frontend reconnection logic
-- No backpressure if client is slow
+    OUT --> BUF["In-memory buffers<br/>stdout_buffer + stderr_buffer"]
+    ERR --> BUF
 
-**Best for:** Small teams, single viewer, quick implementation
+    BUF --> FLUSH["Periodic snapshot flush<br/>every 5 seconds"]
+    FLUSH -->|guarded replace| DB
 
----
-
-## Approach 2: Redis Pub/Sub with WebSocket Fan-Out
-
-**Architecture:**
-
-```
-┌──────────┐  WebSocket  ┌──────────────┐        ┌───────┐
-│ Frontend │ ◄────────── │   FastAPI    │ ◄───── │ Redis │
-│ (Next.js)│             │  (WS rooms)  │ Sub    │Pub/Sub│
-└──────────┘             └──────────────┘        └───┬───┘
-                                                     │ Pub
-┌─────────────┐   SSH tail   ┌─────────┐            │
-│Celery Worker│ ◄─────────── │ GPU Pod │ ───────────┘
-│ (log-tailer)│              │ (logs)  │
-└─────────────┘              └─────────┘
+    EX --> DONE["process exit / timeout / error"]
+    DONE -->|final snapshot + status update| DB
 ```
 
-**How it works:**
+## Data Flow
 
-1. Celery task opens SSH to pod, runs `tail -f` on log file
-2. Each log line is published to Redis channel: `logs:{run_id}`
-3. FastAPI WebSocket endpoint subscribes to channel
-4. Multiple frontends can connect to same channel (fan-out)
+```mermaid
+sequenceDiagram
+    participant Worker as Celery worker
+    participant SSH as SSH process
+    participant Buffer as In-memory buffers
+    participant DB as Postgres
+    participant UI as Frontend
 
-**Implementation:**
+    Worker->>SSH: start command with create_process()
+    SSH-->>Worker: stdout/stderr chunks
+    Worker->>Buffer: append to in-memory buffers
 
-```python
-# Celery task (runs on worker)
-@celery_app.task
-def tail_logs(run_id: str, log_path: str):
-    redis = Redis()
-    with ssh_connect(pod) as conn:
-        for line in conn.exec("tail -f " + log_path):
-            redis.publish(f"logs:{run_id}", line)
+    loop every 5 seconds while running
+        Worker->>DB: replace stdout/stderr with latest full snapshot
+        UI->>DB: poll via GET /api/jobs/{job_id}
+        DB-->>UI: partial stdout/stderr
+    end
 
-# FastAPI WebSocket
-@router.websocket("/runs/{run_id}/logs/ws")
-async def websocket_logs(ws: WebSocket, run_id: str):
-    await ws.accept()
-    pubsub = redis.pubsub()
-    await pubsub.subscribe(f"logs:{run_id}")
-    async for message in pubsub.listen():
-        await ws.send_text(message["data"])
+    SSH-->>Worker: process exits
+    Worker->>DB: final stdout/stderr snapshot
+    Worker->>DB: finalize status, exit_code, duration, completed_at
+    UI->>DB: next poll sees terminal output
 ```
 
-**Pros:**
+## Where State Lives
 
-- Single SSH connection serves unlimited viewers
-- Redis handles message distribution
-- WebSocket enables bidirectional (pause/resume, seek)
-- Scales horizontally with Redis Cluster
+### In memory
 
-**Cons:**
+The live buffer exists only inside the Celery worker that is executing the command.
 
-- More moving parts (Celery task + Redis + WS)
-- Need heartbeat/keepalive for connections
-- Pub/Sub doesn't persist (late joiners miss history)
+It is not stored in:
 
-**Best for:** Multiple concurrent viewers, production systems
+- FastAPI memory
+- Next.js memory
+- Redis
 
----
+Typical shape:
 
-## Approach 3: Log Aggregation with Chunked Storage (Most Scalable)
-
-**Architecture:**
-
-```
-┌──────────┐   REST + SSE   ┌──────────────┐   Query   ┌───────────────┐
-│ Frontend │ ◄───────────── │   FastAPI    │ ◄──────── │  PostgreSQL   │
-│ (Next.js)│  /logs?offset= │   Endpoint   │           │ (log_chunks)  │
-└──────────┘                └──────────────┘           └───────┬───────┘
-                                                               │
-┌─────────────┐   SSH (periodic)   ┌─────────┐                │
-│Celery Beat  │ ◄───────────────── │ GPU Pod │ ───────────────┘
-│ (log-sync)  │   read + chunk     │ (logs)  │    Write chunks
-└─────────────┘                    └─────────┘
+```text
+stdout_buffer: string
+stderr_buffer: string
+last_flushed_stdout_len: int
+last_flushed_stderr_len: int
 ```
 
-**How it works:**
+### In PostgreSQL
 
-1. Celery Beat task runs every 2-5 seconds
-2. SSH into pod, read log file from last known offset
-3. Store new content as chunks in PostgreSQL (with offset, timestamp)
-4. Frontend polls `/logs?after_offset=X` or uses SSE for new chunks
-5. Historical logs always available (persistence)
+The database remains the source of truth for what the frontend can read.
 
-**Database Schema:**
+`job_commands.stdout` and `job_commands.stderr` become:
 
-```sql
-CREATE TABLE log_chunks (
-    id SERIAL PRIMARY KEY,
-    run_id UUID REFERENCES runs(id),
-    log_file VARCHAR(255),          -- e.g., "train.log", "eval.log"
-    chunk_offset BIGINT,            -- byte offset in file
-    chunk_size INT,
-    content TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(run_id, log_file, chunk_offset)
-);
-CREATE INDEX idx_log_chunks_run_offset ON log_chunks(run_id, log_file, chunk_offset);
-```
+- partial snapshots while the command is `RUNNING`
+- final complete output once the command is terminal
 
-**Implementation:**
+No extra log table is introduced.
 
-```python
-# Celery Beat task
-@celery_app.task
-def sync_logs(run_id: str):
-    last_offset = db.query("SELECT MAX(chunk_offset + chunk_size) FROM log_chunks WHERE run_id = %s")
-    with ssh_connect(pod) as conn:
-        new_content = conn.exec(f"tail -c +{last_offset} /workspace/logs/train.log")
-        if new_content:
-            db.insert(LogChunk(run_id, last_offset, new_content))
+## Replace Model
 
-# FastAPI - historical + streaming
-@router.get("/runs/{run_id}/logs")
-async def get_logs(run_id: str, after_offset: int = 0, stream: bool = False):
-    chunks = db.query("SELECT * FROM log_chunks WHERE run_id = %s AND chunk_offset > %s ORDER BY chunk_offset", run_id, after_offset)
+The worker does not append database text incrementally.
 
-    if stream:
-        async def generate():
-            last = after_offset
-            while True:
-                new = await db.query("... WHERE chunk_offset > %s", last)
-                for chunk in new:
-                    yield f"data: {chunk.content}\n\n"
-                    last = chunk.chunk_offset
-                await asyncio.sleep(1)
-        return StreamingResponse(generate(), media_type="text/event-stream")
+Instead, every flush writes the latest full snapshot:
 
-    return {"chunks": chunks}
-```
+1. read output from SSH
+2. append it to the in-memory buffer
+3. every 5 seconds, replace `stdout` and `stderr` in the DB with the current full buffer
+4. when the command exits, do one final replace and then finalize command metadata
 
-**Pros:**
+This is more reliable than append for this project because a repeated flush writes the
+same snapshot rather than duplicating bytes.
 
-- Full log history (seekable, searchable)
-- Survives pod termination (logs persisted)
-- Works with polling OR SSE (flexible)
-- Can add search, filtering, time-range queries
-- Decoupled: log ingestion separate from serving
+## Guard Against Stale Replaces
 
-**Cons:**
+Replacing is only safe if older snapshots cannot overwrite newer ones.
 
-- Latency (2-5s batching vs real-time)
-- Storage costs for large logs
-- More complex to implement
+The implementation should only replace a stored output value when the incoming snapshot
+is at least as long as what is already stored.
 
-**Best for:** Production systems, audit trails, debugging historical runs
+That gives RLX a simple monotonic rule:
 
----
+- larger snapshot wins
+- equal snapshot is harmless
+- smaller snapshot is ignored
 
-## Comparison Matrix
+This prevents a delayed older flush from truncating output.
 
-| Criteria              | SSE + Tail | Redis Pub/Sub | Chunked Storage |
-| --------------------- | ---------- | ------------- | --------------- |
-| Implementation effort | Low        | Medium        | High            |
-| Real-time latency     | ~100ms     | ~100ms        | 2-5 seconds     |
-| Multiple viewers      | Poor       | Excellent     | Good            |
-| Historical logs       | No         | No            | Yes             |
-| Pod failure recovery  | No         | No            | Yes             |
-| Horizontal scaling    | Poor       | Good          | Excellent       |
-| System design score   | Basic      | Strong        | Most impressive |
+## Backend Changes
+
+### Executor
+
+`SSHCommandExecutor.execute()` should:
+
+- switch from `conn.run(...)` to `conn.create_process(...)`
+- read `stdout` and `stderr` concurrently
+- keep building the final `CommandResult`
+- periodically invoke a snapshot callback with the latest full `stdout` / `stderr`
+
+It still returns a normal final `CommandResult` so the existing job flow stays intact.
+
+### Database helpers
+
+The Celery task base should support:
+
+- replacing command output snapshots while a command is still running
+- finalizing status / exit code / duration / completion metadata at the end
+
+The finalizer should not wipe already-persisted output with an older value.
+
+### Job tasks
+
+`clone_repository`, `list_files`, and `run_custom_command` should all use the live-output path
+for the recorded command associated with that job.
+
+The `mkdir` setup call inside clone remains an internal setup step and does not need its own live log row.
+
+## Frontend Changes
+
+The frontend keeps polling.
+
+### Jobs list
+
+`GET /api/jobs?run_id=...` continues to drive:
+
+- step ordering
+- job status badges
+- running/completed states
+
+### Job details
+
+`GET /api/jobs/{job_id}` should be polled every 5 seconds for a running job so:
+
+- partial `stdout`
+- partial `stderr`
+- final output
+
+all show up in the existing expanded command view.
+
+No new UI surface is required. The current terminal output component can keep rendering the same fields.
+
+## Out Of Scope
+
+Not included in this change:
+
+- SSE
+- WebSockets
+- Redis pub/sub log fan-out
+- chunk tables
+- historical log seek/search features
+- GPU telemetry
+- combined "run status + all jobs + output" endpoint
+
+## Tradeoffs
+
+### Pros
+
+- lowest implementation complexity
+- no new public API
+- no migration
+- output is visible before command completion
+- final output still lands in the same fields the UI already reads
+
+### Cons
+
+- repeated full-text replacements are less efficient than chunk storage
+- very large logs mean larger DB writes over time
+- if the worker dies between flushes, the most recent unflushed output is lost
+- the frontend still has polling latency
+
+These are acceptable tradeoffs for the current project size.
+
+## Acceptance Criteria
+
+This feature is successful when:
+
+1. a long-running job updates `job_commands.stdout` / `stderr` before completion
+2. the existing run page shows output growing without manual refresh
+3. the same API endpoints continue to work without response-shape changes
+4. final output remains intact after the command exits
+5. failure, timeout, and cancellation do not erase already-persisted output

@@ -1,13 +1,20 @@
 """SSH command executor using asyncssh."""
 
 import asyncio
+import inspect
 import logging
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 import asyncssh
 
-from rlx_api.celery_app.executors.base import CommandExecutor, CommandResult, CommandStatus
+from rlx_api.celery_app.executors.base import (
+    CommandExecutor,
+    CommandResult,
+    CommandStatus,
+    OutputSnapshotCallback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +153,8 @@ class SSHCommandExecutor(CommandExecutor):
         working_dir: str | None = None,
         timeout_seconds: int | None = 300,  # None = no timeout
         env: dict[str, str] | None = None,
+        on_snapshot: OutputSnapshotCallback | None = None,
+        snapshot_interval_seconds: float = 5.0,
     ) -> CommandResult:
         """Execute a command and return the result."""
         result = CommandResult(
@@ -154,6 +163,57 @@ class SSHCommandExecutor(CommandExecutor):
             started_at=datetime.now(timezone.utc),
             status=CommandStatus.RUNNING,
         )
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        snapshot_lock = asyncio.Lock()
+        last_flushed_sizes = (0, 0)
+
+        async def flush_snapshot(*, force: bool = False) -> None:
+            nonlocal last_flushed_sizes
+
+            if on_snapshot is None:
+                return
+
+            async with snapshot_lock:
+                stdout_snapshot = "".join(stdout_parts)
+                stderr_snapshot = "".join(stderr_parts)
+                snapshot_sizes = (len(stdout_snapshot), len(stderr_snapshot))
+
+                if not force and snapshot_sizes == last_flushed_sizes:
+                    return
+
+                try:
+                    maybe_awaitable = on_snapshot(stdout_snapshot, stderr_snapshot)
+                    if inspect.isawaitable(maybe_awaitable):
+                        await maybe_awaitable
+                except Exception:
+                    logger.warning(
+                        "Failed to persist live command output for %s",
+                        command[:100],
+                        exc_info=True,
+                    )
+                    return
+
+                last_flushed_sizes = snapshot_sizes
+
+        async def read_stream(stream, parts: list[str]) -> None:
+            while True:
+                chunk = await stream.read(4096)
+                if not chunk:
+                    return
+                parts.append(chunk)
+
+        async def periodic_flush() -> None:
+            if on_snapshot is None:
+                return
+
+            while True:
+                await asyncio.sleep(snapshot_interval_seconds)
+                await flush_snapshot()
+
+        flush_task: asyncio.Task[None] | None = None
+        stdout_task: asyncio.Task[None] | None = None
+        stderr_task: asyncio.Task[None] | None = None
 
         try:
             conn = await self._get_connection()
@@ -161,34 +221,38 @@ class SSHCommandExecutor(CommandExecutor):
 
             logger.info(f"Executing command: {full_command[:100]}...")
 
-            # Execute with optional timeout
-            try:
-                if timeout_seconds is not None:
-                    ssh_result = await asyncio.wait_for(
-                        conn.run(full_command, check=False),
-                        timeout=timeout_seconds,
-                    )
+            async with conn.create_process(full_command) as process:
+                stdout_task = asyncio.create_task(read_stream(process.stdout, stdout_parts))
+                stderr_task = asyncio.create_task(read_stream(process.stderr, stderr_parts))
+                if on_snapshot is not None:
+                    flush_task = asyncio.create_task(periodic_flush())
+
+                try:
+                    ssh_result = await process.wait(check=False, timeout=timeout_seconds)
+                except TimeoutError:
+                    process.terminate()
+                    with suppress(Exception):
+                        await asyncio.wait_for(process.wait_closed(), timeout=5)
+                    if process.exit_status is None:
+                        process.kill()
+                        with suppress(Exception):
+                            await process.wait_closed()
+
+                    result.status = CommandStatus.TIMEOUT
+                    result.error_message = f"Command timed out after {timeout_seconds} seconds"
+                    result.error_type = "timeout"
+                    logger.warning(f"Command timed out: {command[:50]}...")
                 else:
-                    ssh_result = await conn.run(full_command, check=False)
+                    result.exit_code = ssh_result.returncode
+                    result.status = (
+                        CommandStatus.SUCCESS if ssh_result.returncode == 0 else CommandStatus.FAILED
+                    )
 
-                result.stdout = ssh_result.stdout or ""
-                result.stderr = ssh_result.stderr or ""
-                result.exit_code = ssh_result.returncode
-                result.status = (
-                    CommandStatus.SUCCESS if ssh_result.returncode == 0 else CommandStatus.FAILED
-                )
+                    if result.exit_code != 0:
+                        result.error_type = "command_error"
+                        result.error_message = f"Command exited with code {result.exit_code}"
 
-                if result.exit_code != 0:
-                    result.error_type = "command_error"
-                    result.error_message = f"Command exited with code {result.exit_code}"
-
-                logger.info(f"Command completed with exit code {result.exit_code}")
-
-            except asyncio.TimeoutError:
-                result.status = CommandStatus.TIMEOUT
-                result.error_message = f"Command timed out after {timeout_seconds} seconds"
-                result.error_type = "timeout"
-                logger.warning(f"Command timed out: {command[:50]}...")
+                    logger.info(f"Command completed with exit code {result.exit_code}")
 
         except asyncssh.Error as e:
             result.status = CommandStatus.FAILED
@@ -203,6 +267,23 @@ class SSHCommandExecutor(CommandExecutor):
             logger.exception(f"Error executing command: {e}")
 
         finally:
+            if stdout_task is not None or stderr_task is not None:
+                await asyncio.gather(
+                    stdout_task or asyncio.sleep(0),
+                    stderr_task or asyncio.sleep(0),
+                    return_exceptions=True,
+                )
+
+            result.stdout = "".join(stdout_parts)
+            result.stderr = "".join(stderr_parts)
+
+            if flush_task is not None:
+                flush_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await flush_task
+
+            await flush_snapshot(force=True)
+
             result.completed_at = datetime.now(timezone.utc)
             if result.started_at and result.completed_at:
                 result.duration_ms = int(

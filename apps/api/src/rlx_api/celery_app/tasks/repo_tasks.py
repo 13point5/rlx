@@ -11,6 +11,8 @@ from rlx_api.celery_app.tasks.base import DatabaseTask
 
 logger = logging.getLogger(__name__)
 
+LIVE_OUTPUT_FLUSH_INTERVAL_SECONDS = 5.0
+
 
 def get_executor_for_run(session, run_id: int) -> SSHCommandExecutor | None:
     """
@@ -63,6 +65,47 @@ def run_async(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+async def _persist_live_command_output(
+    task: DatabaseTask,
+    command_id: int,
+    stdout: str,
+    stderr: str,
+) -> None:
+    """Write the latest full stdout/stderr snapshots for a running command."""
+    await asyncio.to_thread(
+        task.replace_command_output,
+        command_id,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+async def _execute_recorded_command(
+    task: DatabaseTask,
+    executor: SSHCommandExecutor,
+    *,
+    command_id: int,
+    command: str,
+    working_dir: str | None = None,
+    timeout_seconds: int | None = None,
+    env: dict[str, str] | None = None,
+):
+    """Execute a tracked command and persist live output snapshots while it runs."""
+    return await executor.execute(
+        command,
+        working_dir=working_dir,
+        timeout_seconds=timeout_seconds,
+        env=env,
+        on_snapshot=lambda stdout, stderr: _persist_live_command_output(
+            task,
+            command_id,
+            stdout,
+            stderr,
+        ),
+        snapshot_interval_seconds=LIVE_OUTPUT_FLUSH_INTERVAL_SECONDS,
+    )
 
 
 def _cancel_job(session, job, *, message: str, error_type: str = "run_terminated") -> None:
@@ -215,8 +258,11 @@ def clone_repository(self, job_id: int):
 
                     # Execute clone command
                     logger.info(f"Executing clone command: {clone_cmd}")
-                    return await executor.execute(
-                        clone_cmd,
+                    return await _execute_recorded_command(
+                        self,
+                        executor,
+                        command_id=cmd_id,
+                        command=clone_cmd,
                         timeout_seconds=settings.clone_timeout,
                     )
                 finally:
@@ -340,8 +386,11 @@ def list_files(self, job_id: int):
             async def execute_list():
                 try:
                     logger.info(f"Executing list command: {list_cmd}")
-                    return await executor.execute(
-                        list_cmd,
+                    return await _execute_recorded_command(
+                        self,
+                        executor,
+                        command_id=cmd_id,
+                        command=list_cmd,
                         timeout_seconds=settings.command_timeout,
                     )
                 finally:
@@ -473,8 +522,11 @@ def run_custom_command(self, job_id: int):
             async def execute_custom():
                 try:
                     logger.info(f"Executing custom command: {command[:100]}...")
-                    return await executor.execute(
-                        command,
+                    return await _execute_recorded_command(
+                        self,
+                        executor,
+                        command_id=cmd_id,
+                        command=command,
                         working_dir=working_dir,
                         timeout_seconds=timeout,
                         env=env,

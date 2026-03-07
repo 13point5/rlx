@@ -150,6 +150,35 @@ class DatabaseTask(Task):
             session.refresh(cmd)
             return cmd.id
 
+    def replace_command_output(
+        self,
+        command_id: int,
+        *,
+        stdout: str | None = None,
+        stderr: str | None = None,
+    ) -> None:
+        """Replace stored command output with the latest monotonic snapshot."""
+        from rlx_api.database import JobCommand
+
+        with self.get_db_session() as session:
+            cmd = session.query(JobCommand).filter(JobCommand.id == command_id).first()
+            if not cmd:
+                logger.warning("JobCommand %s not found for live output update", command_id)
+                return
+
+            updated = False
+
+            if stdout is not None and len(stdout) >= len(cmd.stdout or ""):
+                cmd.stdout = stdout
+                updated = True
+
+            if stderr is not None and len(stderr) >= len(cmd.stderr or ""):
+                cmd.stderr = stderr
+                updated = True
+
+            if updated:
+                session.commit()
+
     def update_command_result(
         self,
         command_id: int,
@@ -174,8 +203,10 @@ class DatabaseTask(Task):
                     )
                     return
                 cmd.status = status
-                cmd.stdout = stdout
-                cmd.stderr = stderr
+                if stdout is not None and len(stdout) >= len(cmd.stdout or ""):
+                    cmd.stdout = stdout
+                if stderr is not None and len(stderr) >= len(cmd.stderr or ""):
+                    cmd.stderr = stderr
                 cmd.exit_code = exit_code
                 cmd.duration_ms = duration_ms
                 cmd.completed_at = datetime.now(timezone.utc)

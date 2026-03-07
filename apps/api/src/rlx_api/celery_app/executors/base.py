@@ -1,6 +1,7 @@
 """Base command executor and result types."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -65,6 +66,9 @@ class CommandResult:
         }
 
 
+OutputSnapshotCallback = Callable[[str, str], Awaitable[None] | None]
+
+
 class CommandExecutor(ABC):
     """Base class for command executors."""
 
@@ -76,6 +80,8 @@ class CommandExecutor(ABC):
         working_dir: str | None = None,
         timeout_seconds: int = 300,
         env: dict[str, str] | None = None,
+        on_snapshot: OutputSnapshotCallback | None = None,
+        snapshot_interval_seconds: float = 5.0,
     ) -> CommandResult:
         """
         Execute a command and return the result.
@@ -85,6 +91,9 @@ class CommandExecutor(ABC):
             working_dir: Working directory for command execution
             timeout_seconds: Maximum time to wait for command completion
             env: Environment variables to set for the command
+            on_snapshot: Optional callback invoked with the latest full stdout/stderr
+                snapshots while the command is still running
+            snapshot_interval_seconds: Frequency for live snapshot callbacks
 
         Returns:
             CommandResult with stdout, stderr, exit_code, and status

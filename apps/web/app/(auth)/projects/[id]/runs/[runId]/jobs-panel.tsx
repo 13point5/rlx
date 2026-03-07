@@ -39,12 +39,43 @@ interface JobsPanelProps {
   runStatus: string;
 }
 
+function isRunActive(runStatus: string): boolean {
+  return runStatus === "ACTIVE";
+}
+
 function isRunRetryable(runStatus: string): boolean {
   return (
     runStatus !== "TERMINATED" &&
     runStatus !== "STOPPED" &&
     runStatus !== "ERROR"
   );
+}
+
+function isJobTerminal(status: JobStatus): boolean {
+  return (
+    status === "SUCCESS" ||
+    status === "FAILED" ||
+    status === "TIMEOUT" ||
+    status === "CANCELLED"
+  );
+}
+
+function getIdleJobMessage(status: JobStatus, runStatus: string): string | null {
+  if (status === "PENDING") {
+    return isRunActive(runStatus)
+      ? "This job is waiting for earlier jobs to finish."
+      : "The pod is still provisioning. This job has not started yet.";
+  }
+
+  if (status === "QUEUED") {
+    return "This job is queued and will start when a worker picks it up.";
+  }
+
+  if (status === "RUNNING") {
+    return "This job is running. Waiting for the first output...";
+  }
+
+  return null;
 }
 
 function getJobTitle(job: JobResponse): string {
@@ -152,8 +183,12 @@ function JobItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
+  const isRunning = job.status === "RUNNING";
+  const runIsActive = isRunActive(runStatus);
+  const isTerminal = isJobTerminal(job.status);
+  const shouldFetchDetails = isRunning || (expanded && isTerminal);
 
-  // Fetch job details (including commands with stdout/stderr) when expanded
+  // Keep running jobs warm in the background. Terminal jobs fetch once on demand.
   const { data: jobDetails, isLoading: isLoadingDetails } = useQuery({
     queryKey: ["job-details", job.id],
     queryFn: async () => {
@@ -163,8 +198,9 @@ function JobItem({
       }
       return response.job as JobDetailResponse;
     },
-    enabled: expanded,
-    staleTime: 10000, // Cache for 10 seconds
+    enabled: shouldFetchDetails,
+    staleTime: isRunning ? 0 : Number.POSITIVE_INFINITY,
+    refetchInterval: isRunning && runIsActive ? 5000 : false,
   });
 
   // Retry mutation
@@ -190,6 +226,21 @@ function JobItem({
     (job.status === "FAILED" ||
       job.status === "CANCELLED" ||
       job.status === "TIMEOUT");
+  const commands = jobDetails?.commands ?? [];
+  const hasCommands = commands.length > 0;
+  const idleJobMessage = getIdleJobMessage(job.status, runStatus);
+  const shouldShowIdleMessage =
+    expanded &&
+    !isLoadingDetails &&
+    !job.error_message &&
+    !hasCommands &&
+    idleJobMessage !== null;
+  const shouldShowNoDetailsMessage =
+    expanded &&
+    !isLoadingDetails &&
+    !job.error_message &&
+    !hasCommands &&
+    idleJobMessage === null;
 
   return (
     <div className="border-b border-border last:border-0">
@@ -258,10 +309,17 @@ function JobItem({
 
       {expanded && (
         <div className="bg-muted/30 px-4 py-3 pl-12 space-y-3 text-sm">
-          {isLoadingDetails && (
+          {isLoadingDetails && shouldFetchDetails && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               <span className="text-xs">Loading details...</span>
+            </div>
+          )}
+
+          {isRunning && (
+            <div className="flex items-center gap-2 text-xs text-blue-500">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Live output refreshes every 5s</span>
             </div>
           )}
 
@@ -277,14 +335,26 @@ function JobItem({
             </div>
           )}
 
+          {shouldShowIdleMessage && (
+            <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+              {idleJobMessage}
+            </div>
+          )}
+
+          {shouldShowNoDetailsMessage && (
+            <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+              No command output was captured for this job.
+            </div>
+          )}
+
           {/* Command output from job details */}
-          {jobDetails?.commands && jobDetails.commands.length > 0 && (
+          {hasCommands && (
             <div className="space-y-2">
-              {jobDetails.commands.map((cmd, idx) => (
+              {commands.map((cmd, idx) => (
                 <div key={cmd.id} className="space-y-2">
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-medium text-muted-foreground">
-                      Command {jobDetails.commands.length > 1 ? idx + 1 : ""}
+                      Command {commands.length > 1 ? idx + 1 : ""}
                     </p>
                     {cmd.exit_code !== null && (
                       <Badge
@@ -312,6 +382,14 @@ function JobItem({
                   <pre className="whitespace-pre-wrap text-xs bg-muted rounded p-2 overflow-auto max-h-16 font-mono">
                     $ {cmd.command}
                   </pre>
+
+                  {!cmd.stdout && !cmd.stderr && (
+                    <div className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                      {cmd.status === "RUNNING"
+                        ? "Command is running. Waiting for the first output..."
+                        : "No command output was captured."}
+                    </div>
+                  )}
 
                   {/* Stdout */}
                   {cmd.stdout && (
@@ -374,6 +452,7 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
     // Poll while run is active and jobs may still be processing
     refetchInterval: (query) => {
       const currentJobs = query.state.data;
+      if (!isRunActive(runStatus)) return false;
       if (!currentJobs) return 5000;
 
       // Stop polling if run is terminated
@@ -387,7 +466,7 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
           job.status === "RUNNING"
       );
 
-      return hasActiveJobs ? 3000 : false;
+      return hasActiveJobs ? 5000 : false;
     },
   });
 
