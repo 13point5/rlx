@@ -21,6 +21,7 @@ import {
 import {
   getRunJobs,
   getJobDetails,
+  getRunStatus,
   retryJob,
   syncRunJobs,
 } from "@/app/actions/api";
@@ -34,6 +35,7 @@ import type {
   JobDetailResponse,
   JobStatus,
   JobType,
+  RunStatusResponse,
 } from "@/lib/types";
 
 interface JobsPanelProps {
@@ -486,6 +488,23 @@ function JobItem({
 
 export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
   const queryClient = useQueryClient();
+  const { data: runStatusData } = useQuery({
+    queryKey: ["run-status", runId],
+    queryFn: async () => {
+      const response = await getRunStatus(runId);
+      if (!response.success || !response.status) {
+        throw new Error(response.error || "Failed to fetch run status");
+      }
+      return response.status as RunStatusResponse;
+    },
+    enabled: runStatus !== "TERMINATED",
+    refetchInterval: (query) => {
+      const currentStatus =
+        (query.state.data as RunStatusResponse | undefined)?.status ?? runStatus;
+      return currentStatus === "TERMINATED" ? false : 5000;
+    },
+  });
+  const effectiveRunStatus = runStatusData?.status ?? runStatus;
 
   const {
     data: jobs,
@@ -503,11 +522,11 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
     // Poll while run is active and jobs may still be processing
     refetchInterval: (query) => {
       const currentJobs = query.state.data;
-      if (!isRunActive(runStatus)) return false;
+      if (!isRunActive(effectiveRunStatus)) return false;
       if (!currentJobs) return 5000;
 
       // Stop polling if run is terminated
-      if (runStatus === "TERMINATED") return false;
+      if (effectiveRunStatus === "TERMINATED") return false;
 
       // Keep polling if any job is not in a terminal state
       const hasActiveJobs = currentJobs.some(
@@ -585,7 +604,7 @@ export function JobsPanel({ runId, runStatus }: JobsPanelProps) {
                   key={job.id}
                   job={job}
                   runId={runId}
-                  runStatus={runStatus}
+                  runStatus={effectiveRunStatus}
                 />
               ))}
           </div>
